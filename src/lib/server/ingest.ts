@@ -5,7 +5,7 @@ import { processEmail, type ProcessOutcome } from "../pipeline/process";
 import { findDuplicate, type ExistingTxn } from "../pipeline/dedupe";
 import { OpenRouterHaiku } from "../ai/openrouter";
 import { GuardedDecider } from "../ai/budget";
-import { makeJevDecider } from "../ai/jev";
+import { JevDecider } from "../ai/jev";
 import type { Decider } from "../ai/types";
 import { env } from "../env";
 import { fxRate, toBase } from "./fx";
@@ -35,7 +35,9 @@ export async function makeDecider(db: SupabaseClient, userId: string): Promise<D
       input_tokens: c.inputTokens, output_tokens: c.outputTokens, cost_usd: c.costUsd,
     });
   });
-  const inner = makeJevDecider() ?? new OpenRouterHaiku(key, sink);
+  // AI_DECIDER: "jev" (default: Jev decides, Haiku only extracts amounts) or "haiku".
+  const haiku = new OpenRouterHaiku(key, sink);
+  const inner = process.env.AI_DECIDER === "haiku" ? haiku : new JevDecider(key, sink, haiku);
   holder.current = new GuardedDecider(inner, spent, cap, true);
   return holder.current;
 }

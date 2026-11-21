@@ -102,6 +102,10 @@ numbered in `supabase/migrations/`.
 
 ## 7. Known gaps / next
 
-- Jev adapter: waiting for OpenRouter Jev API docs (the build session could not
-  reach openrouter.ai). Haiku path works first.
+- Jev runs through OpenRouter's Decisions API (`POST /api/alpha/decisions`):
+  a `noul` question for "is this a transaction", `choice` questions for type and
+  category. Jev can't read out amounts, so Claude Haiku 5.5 extracts amount,
+  currency and merchant for unknown senders. `AI_DECIDER=haiku` switches the
+  decisions back to Haiku. A head-to-head accuracy run on labelled emails is
+  still to do.
 - v2: personal budgets, recurring bills, income, safe-to-spend.
