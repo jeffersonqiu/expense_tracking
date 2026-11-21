@@ -1,7 +1,11 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getContext } from "@/lib/server/context";
-import { Nav } from "../../Nav";
+import { Shell, Header } from "../../ui/Shell";
+import { IconChevronLeft } from "../../ui/Icons";
 import { TxnForm, type TxnRow } from "../../TxnForm";
+
+const STATUS: Record<string, string> = { pending: "Waiting for review", confirmed: "Accepted", rejected: "Rejected" };
 
 export default async function TransactionPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -13,12 +17,10 @@ export default async function TransactionPage({ params }: { params: Promise<{ id
   if (!data) notFound();
   const t = data as TxnRow;
   return (
-    <>
-      <Nav pending={pendingCount} />
-      <main className="wrap">
-        <h1>Edit transaction <span className="pill">{t.status}</span></h1>
-        <TxnForm txn={t} categories={categories} households={households} returnTo="/transactions" mode="edit" />
-      </main>
-    </>
+    <Shell active="activity" pending={pendingCount}>
+      <Link href="/transactions" className="btn plain" style={{ marginLeft: -8 }}><IconChevronLeft />Activity</Link>
+      <Header title="Transaction" sub={STATUS[t.status]} />
+      <TxnForm txn={t} categories={categories} households={households} returnTo="/transactions" mode="edit" />
+    </Shell>
   );
 }

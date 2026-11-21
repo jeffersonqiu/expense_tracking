@@ -2,10 +2,12 @@ import Link from "next/link";
 import { getContext } from "@/lib/server/context";
 import { setClaimStatus, settleShare } from "../actions";
 import { money, sgtDate } from "@/lib/format";
-import { Flash } from "@/app/Flash";
-import { Nav } from "../Nav";
+import { Shell, Header } from "../ui/Shell";
+import { Flash } from "../Flash";
 
-export const metadata = { title: "Balances · Expense Tracker" };
+export const metadata = { title: "Balances · Expenses" };
+
+type ShareTx = { id: string; merchant: string | null; occurred_at: string; currency: string; status: string };
 
 export default async function BalancesPage({ searchParams }: { searchParams: Promise<{ error?: string; ok?: string }> }) {
   const flash = await searchParams;
@@ -16,7 +18,6 @@ export default async function BalancesPage({ searchParams }: { searchParams: Pro
     db.from("shared_shares").select("id, person_name, amount, settled_at, transactions!inner(id, merchant, occurred_at, currency, status)")
       .eq("user_id", uid).is("settled_at", null).order("created_at"),
   ]);
-  type ShareTx = { id: string; merchant: string | null; occurred_at: string; currency: string; status: string };
   type ShareRow = NonNullable<typeof shares>[number];
   const people = new Map<string, { total: Map<string, number>; rows: ShareRow[] }>();
   for (const s of shares ?? []) {
@@ -27,59 +28,62 @@ export default async function BalancesPage({ searchParams }: { searchParams: Pro
     p.rows.push(s);
     people.set(s.person_name, p);
   }
-  return (
-    <>
-      <Nav pending={pendingCount} />
-      <main className="wrap">
-        <Flash error={flash.error} ok={flash.ok} />
-        <h1>Balances</h1>
-        <h2>Work claims</h2>
-        <form action={setClaimStatus} className="card table-wrap">
-          <table>
-            <thead><tr><th></th><th>Date</th><th>Merchant</th><th>Status</th><th className="num">Amount</th></tr></thead>
-            <tbody>
-              {(claims ?? []).map((c) => (
-                <tr key={c.id}>
-                  <td><input type="checkbox" name="id" value={c.id} style={{ width: "auto" }} /></td>
-                  <td>{sgtDate(c.occurred_at)}</td>
-                  <td><Link href={`/transactions/${c.id}`}>{c.merchant}</Link><div className="small muted">{c.description}</div></td>
-                  <td><span className="pill">{c.claim_status === "to_claim" ? "to claim" : c.claim_status}</span></td>
-                  <td className="num">{money(c.amount, c.currency)}</td>
-                </tr>
-              ))}
-              {(claims ?? []).length === 0 && <tr><td colSpan={5} className="muted">No open claims.</td></tr>}
-            </tbody>
-          </table>
-          {(claims ?? []).length > 0 && (
-            <div className="row" style={{ marginTop: 8 }}>
-              <button className="btn" name="status" value="submitted">Mark submitted</button>
-              <button className="btn primary" name="status" value="reimbursed">Mark reimbursed</button>
-            </div>
-          )}
-        </form>
 
-        <h2>People who owe you</h2>
-        {people.size === 0 && <div className="card muted">Nobody owes you anything.</div>}
-        {[...people.entries()].map(([person, p]) => (
-          <div className="card" key={person}>
-            <strong>{person}</strong> · {[...p.total.entries()].map(([cur, v]) => money(v, cur)).join(" + ")}
-            <table style={{ marginTop: 6 }}>
-              <tbody>
-                {p.rows.map((s) => {
-                  const tx = s.transactions as unknown as ShareTx;
-                  return (
-                    <tr key={s.id}>
-                      <td>{sgtDate(tx.occurred_at)}</td><td>{tx.merchant}</td>
-                      <td className="num">{money(s.amount, tx.currency)}</td>
-                      <td className="num"><form action={settleShare} className="inline"><input type="hidden" name="id" value={s.id} /><button className="btn link small">Paid back</button></form></td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+  return (
+    <Shell active="balances" pending={pendingCount}>
+      <Header title="Balances" sub="Money that's coming back to you" />
+      <Flash error={flash.error} ok={flash.ok} />
+
+      <div className="section-label">Work claims</div>
+      <form action={setClaimStatus}>
+        <div className="list">
+          {(claims ?? []).length === 0 && <div className="row empty">No open claims.</div>}
+          {(claims ?? []).map((c) => (
+            <label className="row" key={c.id} style={{ cursor: "pointer" }}>
+              <input type="checkbox" name="id" value={c.id} style={{ width: 20, height: 20, accentColor: "var(--tint)" }} />
+              <div className="main">
+                <div className="title"><Link href={`/transactions/${c.id}`} style={{ color: "inherit" }}>{c.merchant}</Link></div>
+                <div className="subtitle">{sgtDate(c.occurred_at)}{c.description ? ` · ${c.description}` : ""}</div>
+              </div>
+              <span className={`pill ${c.claim_status === "submitted" ? "tint" : ""}`}>{c.claim_status === "to_claim" ? "To claim" : "Submitted"}</span>
+              <div className="trail num">{money(c.amount, c.currency)}</div>
+            </label>
+          ))}
+        </div>
+        {(claims ?? []).length > 0 && (
+          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 10 }}>
+            <button className="btn" name="status" value="submitted">Mark submitted</button>
+            <button className="btn primary" name="status" value="reimbursed">Mark reimbursed</button>
           </div>
-        ))}
-      </main>
-    </>
+        )}
+      </form>
+
+      <div className="section-label">People who owe you</div>
+      {people.size === 0 && <div className="list"><div className="row empty">Nobody owes you anything.</div></div>}
+      {[...people.entries()].map(([person, p]) => (
+        <div key={person} style={{ marginBottom: 12 }}>
+          <div className="list">
+            <div className="row">
+              <div className="avatar tint">{person.charAt(0).toUpperCase()}</div>
+              <div className="main"><div className="title">{person}</div></div>
+              <div className="trail num" style={{ fontWeight: 600 }}>{[...p.total.entries()].map(([cur, v]) => money(v, cur)).join(" + ")}</div>
+            </div>
+            {p.rows.map((s) => {
+              const tx = s.transactions as unknown as ShareTx;
+              return (
+                <div className="row" key={s.id}>
+                  <div className="main">
+                    <div className="title" style={{ fontWeight: 400 }}>{tx.merchant}</div>
+                    <div className="subtitle">{sgtDate(tx.occurred_at)}</div>
+                  </div>
+                  <div className="trail num">{money(s.amount, tx.currency)}</div>
+                  <form action={settleShare} className="inline"><input type="hidden" name="id" value={s.id} /><button className="btn plain small">Paid back</button></form>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+    </Shell>
   );
 }

@@ -1,10 +1,12 @@
 import { getContext } from "@/lib/server/context";
 import { promoteEmail } from "../actions";
 import { sgtDateTime } from "@/lib/format";
-import { Flash } from "@/app/Flash";
-import { Nav } from "../Nav";
+import { Shell, Header } from "../ui/Shell";
+import { Flash } from "../Flash";
 
-export const metadata = { title: "Skipped emails · Expense Tracker" };
+export const metadata = { title: "Skipped emails · Expenses" };
+
+const STATUS: Record<string, string> = { rejected: "Not a spend", needs_review: "Unclear", ignored: "Ignored" };
 
 export default async function MissedPage({ searchParams }: { searchParams: Promise<{ error?: string; ok?: string }> }) {
   const flash = await searchParams;
@@ -15,29 +17,22 @@ export default async function MissedPage({ searchParams }: { searchParams: Promi
     .eq("user_id", uid).in("status", ["rejected", "needs_review", "ignored"]).gte("received_at", since)
     .order("received_at", { ascending: false }).limit(300);
   return (
-    <>
-      <Nav pending={pendingCount} />
-      <main className="wrap">
-        <Flash error={flash.error} ok={flash.ok} />
-        <h1>Skipped emails (30 days)</h1>
-        <p className="muted small">Emails the connector sent that did not become a transaction. If one was really a spend, turn it into a draft.</p>
-        <div className="card table-wrap">
-          <table>
-            <thead><tr><th>Received</th><th>Email</th><th>Why</th><th></th></tr></thead>
-            <tbody>
-              {(data ?? []).map((e) => (
-                <tr key={e.id}>
-                  <td className="small">{sgtDateTime(e.received_at)}</td>
-                  <td>{e.subject}<div className="small muted">{e.from_address}</div></td>
-                  <td className="small"><span className="pill">{e.status}</span> {e.reason}</td>
-                  <td><form action={promoteEmail} className="inline"><input type="hidden" name="id" value={e.id} /><button className="btn small">Make draft</button></form></td>
-                </tr>
-              ))}
-              {(data ?? []).length === 0 && <tr><td colSpan={4} className="muted">Nothing skipped.</td></tr>}
-            </tbody>
-          </table>
-        </div>
-      </main>
-    </>
+    <Shell active="settings" pending={pendingCount}>
+      <Header title="Skipped emails" sub="Last 30 days. If one was really a spend, turn it into a draft." />
+      <Flash error={flash.error} ok={flash.ok} />
+      <div className="list">
+        {(data ?? []).length === 0 && <div className="row empty">Nothing skipped.</div>}
+        {(data ?? []).map((e) => (
+          <div className="row" key={e.id}>
+            <div className="main">
+              <div className="title" style={{ fontWeight: 400 }}>{e.subject || "(no subject)"}</div>
+              <div className="subtitle">{e.from_address.replace(/<.*>/, "").trim() || e.from_address} · {sgtDateTime(e.received_at)}</div>
+              <div className="subtitle"><span className={`pill ${e.status === "needs_review" ? "warn" : ""}`}>{STATUS[e.status] ?? e.status}</span> {e.reason}</div>
+            </div>
+            <form action={promoteEmail} className="inline"><input type="hidden" name="id" value={e.id} /><button className="btn" style={{ fontSize: 13, padding: "5px 10px" }}>Make draft</button></form>
+          </div>
+        ))}
+      </div>
+    </Shell>
   );
 }

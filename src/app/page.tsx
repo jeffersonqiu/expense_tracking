@@ -1,23 +1,28 @@
 import Link from "next/link";
 import { getContext, monthRange, shiftMonth } from "@/lib/server/context";
 import { householdMonth, personalMonth } from "@/lib/server/summary";
-import { money } from "@/lib/format";
-import { Nav } from "./Nav";
+import { money, sgtDate } from "@/lib/format";
+import { Shell, Header } from "./ui/Shell";
+import { MonthStepper } from "./ui/MonthStepper";
+import { IconAlert, IconBriefcase, IconChart, IconChevronRight, IconHouse, IconInbox, IconPeople } from "./ui/Icons";
 
-export default async function Dashboard({ searchParams }: { searchParams: Promise<{ m?: string }> }) {
+export default async function Summary({ searchParams }: { searchParams: Promise<{ m?: string }> }) {
   const sp = await searchParams;
   const { db, uid, profile, categories, households, pendingCount } = await getContext();
   const base = profile?.base_currency ?? "SGD";
   const { ym, start, end } = monthRange(sp.m);
+  const prev = monthRange(shiftMonth(ym, -1));
   const hh = households[0];
 
-  const [personal, household, heartbeat, claims, shares, owed] = await Promise.all([
+  const [personal, prevPersonal, household, heartbeat, claims, shares, owed, recent] = await Promise.all([
     personalMonth(db, uid, start, end),
+    personalMonth(db, uid, prev.start, prev.end),
     hh ? householdMonth(db, hh.id, start, end) : Promise.resolve(null),
-    db.from("script_heartbeats").select("last_seen_at, last_error").eq("user_id", uid).maybeSingle(),
+    db.from("script_heartbeats").select("last_seen_at").eq("user_id", uid).maybeSingle(),
     db.from("transactions").select("base_amount").eq("user_id", uid).eq("allocation", "work").eq("status", "confirmed").in("claim_status", ["to_claim", "submitted"]),
     db.from("shared_shares").select("amount, transactions!inner(fx_rate, status)").eq("user_id", uid).is("settled_at", null),
-    hh ? db.from("transactions").select("base_amount, kind, user_id").eq("household_id", hh.id).eq("allocation", "household").eq("status", "confirmed").is("reimbursed_at", null).neq("user_id", hh.owner_id) : Promise.resolve({ data: [] }),
+    hh ? db.from("transactions").select("base_amount, kind").eq("household_id", hh.id).eq("allocation", "household").eq("status", "confirmed").is("reimbursed_at", null).neq("user_id", hh.owner_id) : Promise.resolve({ data: [] as { base_amount: number | null; kind: string }[] }),
+    db.from("transactions").select("id, occurred_at, merchant, amount, currency, kind, category_id").eq("user_id", uid).eq("status", "confirmed").gte("occurred_at", start).lt("occurred_at", end).order("occurred_at", { ascending: false }).limit(5),
   ]);
 
   const claimTotal = (claims.data ?? []).reduce((s, r) => s + Number(r.base_amount ?? 0), 0);
@@ -29,56 +34,111 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   const lastSeen = heartbeat.data?.last_seen_at ? new Date(heartbeat.data.last_seen_at) : null;
   const stale = !lastSeen || Date.now() - lastSeen.getTime() > 24 * 3600e3;
 
+  const catName = new Map(categories.map((c) => [c.id, c.name]));
   const cats = [...personal.byCategory.entries()]
-    .map(([id, v]) => ({ name: categories.find((c) => c.id === id)?.name ?? "Uncategorised", v }))
+    .map(([id, v]) => ({ name: catName.get(id ?? "") ?? "Uncategorised", v }))
+    .filter((c) => c.v > 0)
     .sort((a, b) => b.v - a.v);
   const maxCat = Math.max(1, ...cats.map((c) => c.v));
+  const delta = personal.total - prevPersonal.total;
+  const spent = household?.spent ?? 0;
   const budget = hh?.monthly_budget ?? 0;
 
   return (
-    <>
-      <Nav pending={pendingCount} />
-      <main className="wrap">
-        {stale && (
-          <div className="warn">
-            {lastSeen ? `Gmail connector last seen ${lastSeen.toLocaleString("en-SG", { timeZone: "Asia/Singapore" })}.` : "Gmail connector not set up yet."}{" "}
-            <Link href="/settings">Check settings</Link>
+    <Shell active="summary" pending={pendingCount}>
+      <Header title="Summary"><MonthStepper ym={ym} path="/" /></Header>
+
+      {stale && (
+        <Link href="/settings" className="banner warn" style={{ color: "var(--label)" }}>
+          <IconAlert />
+          <span className="grow">{lastSeen ? "Gmail connector hasn't checked in for over a day." : "Connect Gmail to start capturing spending."}</span>
+          <IconChevronRight className="chev" />
+        </Link>
+      )}
+      {pendingCount > 0 && (
+        <Link href="/review" className="banner" style={{ color: "var(--label)" }}>
+          <span className="avatar tint" style={{ width: 28, height: 28 }}><IconInbox /></span>
+          <span className="grow"><strong>{pendingCount}</strong> {pendingCount === 1 ? "spend" : "spends"} waiting for review</span>
+          <IconChevronRight className="chev" />
+        </Link>
+      )}
+
+      <section className="hero" aria-label="Personal spending">
+        <div className="h-label">Personal spending</div>
+        <div className="h-value">{money(personal.total, base)}</div>
+        <div className="h-foot">
+          {prevPersonal.total > 0
+            ? Math.abs(delta) < 0.005 ? "Same as last month" : <>{money(Math.abs(delta), base)} {delta > 0 ? "more" : "less"} than last month</>
+            : "Accepted spends only, your share of shared costs"}
+        </div>
+      </section>
+
+      <div className="tiles">
+        {hh && (
+          <Link href="/household" className="tile">
+            <div className="t-label"><IconHouse />{hh.name}</div>
+            <div className="t-value">{money(Math.abs(budget - spent), hh.currency)}</div>
+            <div className="t-foot">{spent > budget ? <span className="bad">over budget</span> : `left of ${money(budget, hh.currency)}`}</div>
+          </Link>
+        )}
+        <Link href="/balances" className="tile">
+          <div className="t-label"><IconBriefcase />Work claims</div>
+          <div className="t-value">{money(claimTotal, base)}</div>
+          <div className="t-foot">not yet reimbursed</div>
+        </Link>
+        <Link href="/balances" className="tile">
+          <div className="t-label"><IconPeople />Owed to you</div>
+          <div className="t-value">{money(owedToMe, base)}</div>
+          <div className="t-foot">from shared spends</div>
+        </Link>
+        {hh && hh.owner_id === uid && owedToMembers > 0 ? (
+          <Link href="/household" className="tile">
+            <div className="t-label"><IconHouse />To reimburse</div>
+            <div className="t-value">{money(owedToMembers, hh.currency)}</div>
+            <div className="t-foot">household spends paid by others</div>
+          </Link>
+        ) : (
+          <div className="tile">
+            <div className="t-label"><IconChart />Invested</div>
+            <div className="t-value">{money(personal.investments, base)}</div>
+            <div className="t-foot">not counted as spending</div>
           </div>
         )}
-        {pendingCount > 0 && <div className="warn"><Link href="/review">{pendingCount} spends waiting for review</Link></div>}
-        <div className="row" style={{ justifyContent: "space-between" }}>
-          <h1>{ym}</h1>
-          <div className="row">
-            <Link className="btn" href={`/?m=${shiftMonth(ym, -1)}`}>←</Link>
-            <Link className="btn" href={`/?m=${shiftMonth(ym, 1)}`}>→</Link>
+      </div>
+
+      <h2 className="section-title">By category</h2>
+      <div className="list bars">
+        {cats.length === 0 && <div className="row empty">No accepted spending this month yet.</div>}
+        {cats.map((c) => (
+          <div className="row" key={c.name} title={`${c.name}: ${money(c.v, base)}`}>
+            <div className="main"><div className="title">{c.name}</div></div>
+            <div className="trail">
+              <span className="num">{money(c.v, base)}</span>{" "}
+              <span className="small faint num">{personal.total > 0 ? Math.round((c.v / personal.total) * 100) : 0}%</span>
+            </div>
+            <div className="bar-track"><div className="bar-fill" style={{ width: `${(c.v / maxCat) * 100}%` }} /></div>
           </div>
-        </div>
-        <div className="grid">
-          <div className="card stat"><div className="label">Personal spending</div><div className="value">{money(personal.total, base)}</div><div className="small muted">accepted only · your share of shared spends</div></div>
-          {hh && (
-            <div className="card stat">
-              <div className="label">Household ({hh.name})</div>
-              <div className="value">{money(household?.spent ?? 0, hh.currency)}</div>
-              <div className="bar" style={{ margin: "6px 0" }}><span style={{ width: `${Math.min(100, ((household?.spent ?? 0) / Math.max(1, budget)) * 100)}%` }} /></div>
-              <div className="small muted">{money(Math.max(0, budget - (household?.spent ?? 0)), hh.currency)} left of {money(budget, hh.currency)}</div>
+        ))}
+      </div>
+
+      <h2 className="section-title" style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+        Recent <Link href="/transactions" className="small" style={{ fontWeight: 500 }}>See all</Link>
+      </h2>
+      <div className="list">
+        {(recent.data ?? []).length === 0 && <div className="row empty">Nothing accepted yet this month.</div>}
+        {(recent.data ?? []).map((t) => (
+          <Link className="row" href={`/transactions/${t.id}`} key={t.id}>
+            <div className="avatar">{(t.merchant ?? "?").trim().charAt(0).toUpperCase()}</div>
+            <div className="main">
+              <div className="title">{t.merchant ?? "—"}</div>
+              <div className="subtitle">{catName.get(t.category_id) ?? (t.kind === "spend" ? "Uncategorised" : t.kind)} · {sgtDate(t.occurred_at)}</div>
             </div>
-          )}
-          <div className="card stat"><div className="label">Work claims outstanding</div><div className="value">{money(claimTotal, base)}</div></div>
-          <div className="card stat"><div className="label">People owe you</div><div className="value">{money(owedToMe, base)}</div></div>
-          {hh && hh.owner_id === uid && <div className="card stat"><div className="label">You owe household members</div><div className="value">{money(owedToMembers, hh.currency)}</div></div>}
-          <div className="card stat"><div className="label">Invested</div><div className="value">{money(personal.investments, base)}</div></div>
-        </div>
-        <h2>Personal spending by category</h2>
-        <div className="card">
-          {cats.length === 0 && <p className="muted">No accepted spending this month yet.</p>}
-          {cats.map((c) => (
-            <div key={c.name} style={{ marginBottom: 8 }}>
-              <div className="row" style={{ justifyContent: "space-between" }}><span>{c.name}</span><span>{money(c.v, base)}</span></div>
-              <div className="bar"><span style={{ width: `${(Math.max(0, c.v) / maxCat) * 100}%` }} /></div>
+            <div className="trail num">
+              <span className={t.kind === "refund" ? "good" : undefined}>{t.kind === "refund" ? "+" : ""}{money(t.amount, t.currency)}</span>
             </div>
-          ))}
-        </div>
-      </main>
-    </>
+          </Link>
+        ))}
+      </div>
+    </Shell>
   );
 }

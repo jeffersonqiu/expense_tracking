@@ -1,5 +1,5 @@
 import { saveTransaction } from "./actions";
-import { toLocalInput } from "@/lib/format";
+import { money, sgtDateTime, toLocalInput } from "@/lib/format";
 import type { Category, Household } from "@/lib/server/context";
 
 export interface TxnRow {
@@ -7,6 +7,8 @@ export interface TxnRow {
   occurred_at: string;
   amount: number | string;
   currency: string;
+  base_amount?: number | string | null;
+  base_currency?: string;
   kind: string;
   merchant: string | null;
   merchant_raw: string | null;
@@ -25,7 +27,27 @@ export interface TxnRow {
   shared_shares?: { person_name: string; amount: number | string; settled_at: string | null }[];
 }
 
-/** One editable transaction: used by the review queue, transaction detail and manual add. */
+const ALLOCATIONS = [
+  { value: "personal", label: "Personal" },
+  { value: "work", label: "Work" },
+  { value: "shared", label: "Shared" },
+  { value: "household", label: "Household" },
+];
+
+function Segmented({ name, value, options }: { name: string; value: string; options: { value: string; label: string }[] }) {
+  return (
+    <div className="seg" role="radiogroup">
+      {options.map((o) => (
+        <label key={o.value}>
+          <input type="radio" name={name} value={o.value} defaultChecked={value === o.value} />
+          <span>{o.label}</span>
+        </label>
+      ))}
+    </div>
+  );
+}
+
+/** One captured spend: review card, edit form, or manual entry. */
 export function TxnForm({
   txn, categories, households, returnTo, mode,
 }: {
@@ -36,88 +58,121 @@ export function TxnForm({
   mode: "review" | "edit" | "new";
 }) {
   const shares = (txn?.shared_shares ?? []).filter((s) => !s.settled_at).map((s) => `${s.person_name}: ${s.amount}`).join("\n");
-  const hint = txn?.counterparty_type === "individual" ? "Paid to a person: switch Type to Transfer if this wasn't a purchase." : null;
+  const personHint = txn?.counterparty_type === "individual";
+  const amountSigned = txn ? (txn.kind === "refund" ? -Number(txn.amount) : Number(txn.amount)) : 0;
+  const showConv = txn && txn.base_currency && txn.currency !== txn.base_currency;
+  const confidence = txn?.confidence != null ? Math.round(Number(txn.confidence) * 100) : null;
+
   return (
-    <form action={saveTransaction} className="card">
+    <form action={saveTransaction} className="review">
       <input type="hidden" name="id" value={txn?.id ?? ""} />
       <input type="hidden" name="return_to" value={returnTo} />
+
       {txn && (
-        <div className="row small muted" style={{ marginBottom: 8 }}>
-          <span>{txn.payment_method ?? "—"}</span>
-          {txn.classifier && <span className="pill">{txn.classifier}{txn.confidence != null ? ` · ${Math.round(Number(txn.confidence) * 100)}%` : ""}</span>}
-          {txn.needs_manual_amount && <span className="pill error">check amount</span>}
+        <div className="top">
+          <div style={{ minWidth: 0 }}>
+            <div className="merchant">{txn.merchant ?? txn.merchant_raw ?? "Unknown merchant"}</div>
+            <div className="meta">
+              <span>{sgtDateTime(txn.occurred_at)}</span>
+              {txn.payment_method && <span>{txn.payment_method}</span>}
+              {txn.kind === "refund" && <span className="pill good">Refund</span>}
+              {txn.kind === "investment" && <span className="pill tint">Investment</span>}
+              {txn.needs_manual_amount && <span className="pill warn">Check amount</span>}
+              {personHint && <span className="pill">Paid to a person</span>}
+            </div>
+          </div>
+          <div className="amount">
+            <span className={amountSigned < 0 ? "good" : undefined}>{money(amountSigned, txn.currency)}</span>
+            {showConv && <span className="conv">{money(txn.base_amount ?? null, txn.base_currency)}</span>}
+          </div>
         </div>
       )}
-      {hint && <p className="small muted" style={{ marginTop: 0 }}>{hint}</p>}
-      <div className="fields">
-        <label>Merchant<input name="merchant" defaultValue={txn?.merchant ?? ""} required /></label>
-        <label>Amount<input name="amount" type="number" step="0.01" min="0" defaultValue={txn ? Number(txn.amount) : ""} required /></label>
-        <label>Currency<input name="currency" defaultValue={txn?.currency ?? "SGD"} pattern="[A-Z]{3}" maxLength={3} required /></label>
-        <label>Date & time<input name="occurred_at" type="datetime-local" defaultValue={toLocalInput(txn?.occurred_at ?? new Date().toISOString())} required /></label>
-        <label>Type
-          <select name="kind" defaultValue={txn?.kind ?? "spend"}>
-            <option value="spend">Spend</option>
-            <option value="refund">Refund</option>
-            <option value="investment">Investment</option>
-            <option value="transfer">Transfer (not spending)</option>
-            <option value="income">Income</option>
-          </select>
-        </label>
-        <label>Category
-          <select name="category_id" defaultValue={txn?.category_id ?? ""}>
-            <option value="">— choose —</option>
-            {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
-        </label>
-        <label>Allocation
-          <select name="allocation" defaultValue={txn?.allocation ?? "personal"}>
-            <option value="personal">Personal</option>
-            <option value="work">Work claim</option>
-            <option value="shared">Shared, I paid first</option>
-            <option value="household">Household</option>
-          </select>
-        </label>
-        <label>Claim status (work)
-          <select name="claim_status" defaultValue={txn?.claim_status ?? "to_claim"}>
-            <option value="to_claim">To claim</option>
-            <option value="submitted">Submitted</option>
-            <option value="reimbursed">Reimbursed</option>
-          </select>
-        </label>
-        <label>Household
+
+      <div className="block">
+        <div className="lbl">Allocation</div>
+        <Segmented name="allocation" value={txn?.allocation ?? "personal"} options={ALLOCATIONS} />
+      </div>
+
+      <div className="block when-work">
+        <div className="lbl">Claim status</div>
+        <Segmented name="claim_status" value={txn?.claim_status ?? "to_claim"} options={[
+          { value: "to_claim", label: "To claim" }, { value: "submitted", label: "Submitted" }, { value: "reimbursed", label: "Reimbursed" },
+        ]} />
+      </div>
+      <div className="block when-household">
+        <label className="field"><span>Household</span>
           <select name="household_id" defaultValue={txn?.household_id ?? households[0]?.id ?? ""}>
-            <option value="">—</option>
+            {households.length === 0 && <option value="">Create a household in Settings first</option>}
             {households.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
           </select>
         </label>
       </div>
-      <div className="fields" style={{ marginTop: 10 }}>
-        <label>Note<input name="description" defaultValue={txn?.description ?? ""} maxLength={500} /></label>
-        <label>Shared: who owes you (one per line, "Name: amount")
+      <div className="block when-shared">
+        <label className="field"><span>Who owes you (one per line, e.g. &ldquo;Alex: 12.50&rdquo;)</span>
           <textarea name="shares" rows={2} defaultValue={shares} placeholder="Alex: 12.50" />
         </label>
       </div>
-      {txn?.source_emails && (
-        <details style={{ marginTop: 8 }}>
-          <summary>Email: {txn.source_emails.subject}</summary>
-          <p className="small muted">{txn.source_emails.from_address}</p>
-          <pre className="email">{txn.source_emails.body_text.slice(0, 3000)}</pre>
-        </details>
-      )}
-      <div className="row" style={{ marginTop: 10 }}>
+
+      <div className="block">
+        <div className="lbl">Category</div>
+        <div className="chips">
+          {categories.map((c) => (
+            <label key={c.id}>
+              <input type="radio" name="category_id" value={c.id} defaultChecked={txn?.category_id === c.id} />
+              <span>{c.name}</span>
+            </label>
+          ))}
+        </div>
+      </div>
+
+      <details open={mode !== "review" || !!txn?.needs_manual_amount}>
+        <summary>{mode === "new" ? "Details" : "More details"}</summary>
+        <div className="fields">
+          <label className="field"><span>Merchant</span><input name="merchant" defaultValue={txn?.merchant ?? ""} required /></label>
+          <label className="field"><span>Amount</span><input name="amount" type="number" inputMode="decimal" step="0.01" min="0" defaultValue={txn ? Number(txn.amount) : ""} required /></label>
+          <label className="field"><span>Currency</span><input name="currency" defaultValue={txn?.currency ?? "SGD"} pattern="[A-Z]{3}" maxLength={3} required /></label>
+          <label className="field"><span>Date and time</span><input name="occurred_at" type="datetime-local" defaultValue={toLocalInput(txn?.occurred_at ?? new Date().toISOString())} required /></label>
+          <label className="field"><span>Type</span>
+            <select name="kind" defaultValue={txn?.kind ?? "spend"}>
+              <option value="spend">Spend</option>
+              <option value="refund">Refund</option>
+              <option value="investment">Investment</option>
+              <option value="transfer">Transfer (not spending)</option>
+              <option value="income">Income</option>
+            </select>
+          </label>
+          <label className="field"><span>Note</span><input name="description" defaultValue={txn?.description ?? ""} maxLength={500} /></label>
+        </div>
+        {txn?.source_emails && (
+          <details style={{ marginTop: 12 }}>
+            <summary>Show original email</summary>
+            <div className="small muted">{txn.source_emails.from_address} · {txn.source_emails.subject}</div>
+            <pre className="email">{txn.source_emails.body_text.slice(0, 3000)}</pre>
+          </details>
+        )}
+      </details>
+
+      <div className="actions">
         {mode === "review" ? (
           <>
-            <button className="btn primary" name="decision" value="accept">Accept</button>
-            <button className="btn danger" name="decision" value="reject" formNoValidate>Reject</button>
-            <label className="check small"><input type="checkbox" name="remember" defaultChecked /> Remember for this merchant</label>
-            <label className="check small"><input type="checkbox" name="auto_accept" /> Auto-accept next time</label>
+            <div className="opts">
+              <label className="check small"><input type="checkbox" name="remember" defaultChecked /> Remember for this merchant</label>
+              <label className="check small"><input type="checkbox" name="auto_accept" /> Auto-accept next time</label>
+            </div>
+            <div className="go">
+              <button className="btn destructive" name="decision" value="reject" formNoValidate>Reject</button>
+              <button className="btn primary" name="decision" value="accept">Accept</button>
+            </div>
           </>
         ) : mode === "new" ? (
-          <button className="btn primary" name="decision" value="accept">Add</button>
+          <div className="go"><button className="btn primary" name="decision" value="accept">Add expense</button></div>
         ) : (
           <>
-            <button className="btn primary" name="decision" value={txn?.status === "pending" ? "accept" : "save"}>Save</button>
-            {txn?.status !== "rejected" && <button className="btn danger" name="decision" value="reject" formNoValidate>Reject</button>}
+            <span className="small faint">{txn?.classifier ? `Captured by ${txn.classifier}${confidence != null ? ` · ${confidence}% confident` : ""}` : ""}</span>
+            <div className="go">
+              {txn?.status !== "rejected" && <button className="btn destructive" name="decision" value="reject" formNoValidate>Reject</button>}
+              <button className="btn primary" name="decision" value={txn?.status === "pending" ? "accept" : "save"}>Save</button>
+            </div>
           </>
         )}
       </div>

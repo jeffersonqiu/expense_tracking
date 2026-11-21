@@ -5,14 +5,14 @@ import { createIngestKey } from "../actions";
 export function CreateKey() {
   const [state, action, pending] = useActionState(createIngestKey, {} as { key?: string; error?: string });
   return (
-    <form action={action} className="row">
-      <input name="label" placeholder="Label, e.g. Jefferson Gmail" style={{ maxWidth: 260 }} />
-      <button className="btn primary" disabled={pending}>Create key</button>
-      {state.error && <span className="error">{state.error}</span>}
+    <form action={action} style={{ display: "flex", flexWrap: "wrap", gap: 8, width: "100%" }}>
+      <input name="label" placeholder="Connector name, e.g. My Gmail" aria-label="Connector name" style={{ flex: "1 1 180px" }} />
+      <button className="btn primary" disabled={pending}>{pending ? "Creating…" : "Create key"}</button>
+      {state.error && <div className="small bad" style={{ flexBasis: "100%" }}>{state.error}</div>}
       {state.key && (
-        <div className="warn" style={{ width: "100%" }}>
-          Copy this key into the Apps Script <code>INGEST_KEY</code> property now. It won&apos;t be shown again:
-          <div><code>{state.key}</code></div>
+        <div style={{ flexBasis: "100%", marginTop: 4 }}>
+          <div className="small muted" style={{ marginBottom: 6 }}>Copy this into the Apps Script <strong>INGEST_KEY</strong> property now. It won&apos;t be shown again.</div>
+          <div className="key" style={{ display: "block", padding: 10, userSelect: "all" }}>{state.key}</div>
         </div>
       )}
     </form>
