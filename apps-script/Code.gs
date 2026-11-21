@@ -12,7 +12,7 @@
  */
 
 var SCRIPT_VERSION = '1.0.0';
-var BATCH_SIZE = 20;               // emails per request
+var BATCH_SIZE = 10;               // emails per request (keeps each request well under Vercel's 60 s limit)
 var MAX_RUN_MS = 4.5 * 60 * 1000;  // stay under Apps Script's 6-minute limit
 var OVERLAP_SEC = 15 * 60;         // re-check the last 15 min each run (server ignores repeats)
 var BODY_CHARS = 20000;

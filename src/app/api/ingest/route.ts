@@ -21,7 +21,7 @@ const Body = z.object({
   scriptVersion: z.string().max(40).optional(),
   scanned: z.number().int().min(0).max(100_000).optional(),
   error: z.string().max(500).optional(),
-  emails: z.array(Email).max(25).default([]),
+  emails: z.array(Email).max(15).default([]),
 });
 
 /** Called by the Apps Script in each user's Google account. */
