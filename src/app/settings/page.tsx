@@ -1,13 +1,15 @@
 import { getContext } from "@/lib/server/context";
 import { addCategory, addHouseholdMember, inviteEmail, removeInvite, revokeIngestKey, saveHousehold, setAutoAccept, updateAiSettings } from "../actions";
 import { money, sgtDateTime } from "@/lib/format";
+import { Flash } from "@/app/Flash";
 import { Nav } from "../Nav";
 import { CreateKey } from "./CreateKey";
 import Link from "next/link";
 
 export const metadata = { title: "Settings · Expense Tracker" };
 
-export default async function SettingsPage() {
+export default async function SettingsPage({ searchParams }: { searchParams: Promise<{ error?: string; ok?: string }> }) {
+  const flash = await searchParams;
   const { db, uid, profile, categories, households, pendingCount } = await getContext();
   const isOwner = !!profile?.is_owner;
   const monthStart = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1)).toISOString();
@@ -32,6 +34,7 @@ export default async function SettingsPage() {
     <>
       <Nav pending={pendingCount} />
       <main className="wrap">
+        <Flash error={flash.error} ok={flash.ok} />
         <h1>Settings</h1>
 
         <h2>Gmail connector</h2>
@@ -86,10 +89,10 @@ export default async function SettingsPage() {
           )}
           {hh && (
             <>
-              <p className="small muted">Members: {(members.data ?? []).length}. Add someone after they have signed in once.</p>
+              <p className="small muted">Members: {(members.data ?? []).length}. To add your spouse, invite them below with "Add to household" ticked; they join on first sign-in.</p>
               <form action={addHouseholdMember} className="row">
                 <input type="hidden" name="household_id" value={hh.id} />
-                <input name="email" type="email" placeholder="wife@gmail.com" required style={{ maxWidth: 260 }} />
+                <input name="email" type="email" placeholder="Member's Gmail (already invited)" required style={{ maxWidth: 260 }} />
                 <button className="btn">Add member</button>
               </form>
             </>
@@ -110,6 +113,7 @@ export default async function SettingsPage() {
               ))}
               <form action={inviteEmail} className="row" style={{ marginTop: 8 }}>
                 <input name="email" type="email" placeholder="Invite by Gmail address" required style={{ maxWidth: 260 }} />
+                {hh && <label className="check small"><input type="checkbox" name="household" defaultChecked /> Add to {hh.name}</label>}
                 <button className="btn">Invite</button>
               </form>
             </div>

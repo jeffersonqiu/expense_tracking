@@ -1,9 +1,13 @@
 \set ON_ERROR_STOP on
 -- Setup as superuser
-insert into public.allowed_emails(email) values ('owner@example.com'), ('wife@example.com');
-insert into auth.users(id, email) values
-  ('00000000-0000-0000-0000-00000000000a', 'owner@example.com'),
-  ('00000000-0000-0000-0000-00000000000b', 'wife@example.com');
+insert into public.allowed_emails(email) values ('owner@example.com');
+insert into auth.users(id, email) values ('00000000-0000-0000-0000-00000000000a', 'owner@example.com');
+insert into public.households(id, name, owner_id) values ('10000000-0000-0000-0000-000000000001', 'Home', '00000000-0000-0000-0000-00000000000a');
+-- Invite carrying the household: wife joins it automatically on first sign-in
+insert into public.allowed_emails(email, household_id) values ('wife@example.com', '10000000-0000-0000-0000-000000000001');
+insert into auth.users(id, email) values ('00000000-0000-0000-0000-00000000000b', 'wife@example.com');
+select count(*) = 1 as ok from public.household_members where user_id = '00000000-0000-0000-0000-00000000000b' \gset
+\if :ok \else \echo 'FAIL invitee not added to household' \q \endif
 do $$ begin
   insert into auth.users(id, email) values ('00000000-0000-0000-0000-00000000000c', 'stranger@example.com');
   raise exception 'uninvited user was allowed';
@@ -19,8 +23,6 @@ select is_owner from public.profiles where email = 'owner@example.com' \gset
 select count(*) = 15 as ok from public.categories where user_id = '00000000-0000-0000-0000-00000000000a' \gset
 \if :ok \else \echo 'FAIL categories not seeded' \q \endif
 
-insert into public.households(id, name, owner_id) values ('10000000-0000-0000-0000-000000000001', 'Home', '00000000-0000-0000-0000-00000000000a');
-insert into public.household_members values ('10000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-00000000000b');
 
 -- Wife's household spend, owner's personal spend
 insert into public.transactions(id, user_id, client_ref, occurred_at, amount, currency, kind, allocation, household_id) values

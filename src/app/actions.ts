@@ -15,6 +15,12 @@ const KINDS = ["spend", "refund", "investment", "transfer", "income"] as const;
 const ALLOCATIONS = ["personal", "work", "shared", "household"] as const;
 const CLAIM = ["to_claim", "submitted", "reimbursed"] as const;
 
+/** Send the user back to a page with a readable message (server actions must not crash the page). */
+function back(path: string, msg: string, kind: "error" | "ok" = "error"): never {
+  const safe = path.startsWith("/") && !path.startsWith("//") ? path.split("?")[0]! : "/";
+  redirect(`${safe}?${kind}=${encodeURIComponent(msg)}`);
+}
+
 function str(fd: FormData, k: string): string {
   const v = fd.get(k);
   return typeof v === "string" ? v.trim() : "";
@@ -52,15 +58,18 @@ const TxnForm = z.object({
 /** Accept / reject / save one transaction (also creates manual ones when id is empty). */
 export async function saveTransaction(fd: FormData) {
   const { db, uid, profile } = await getContext();
-  const f = TxnForm.parse(Object.fromEntries(fd));
+  const returnTo = str(fd, "return_to") || "/review";
+  const parsed = TxnForm.safeParse(Object.fromEntries(fd));
+  if (!parsed.success) back(returnTo, "Please check the amount, currency (3 letters, e.g. SGD) and other fields.");
+  const f = parsed.data;
   const occurred = fromLocalInput(f.occurred_at);
-  if (!occurred) throw new Error("Invalid date");
+  if (!occurred) back(returnTo, "Please enter a valid date and time.");
   const base = profile?.base_currency ?? "SGD";
   const rate = await fxRate(adminClient(), f.currency, base, occurred);
   const allocation = f.allocation;
   const key = merchantKey(f.merchant || "manual");
 
-  if (allocation === "household" && !f.household_id) throw new Error("Choose a household");
+  if (allocation === "household" && !f.household_id) back(returnTo, "Choose a household (create one in Settings first).");
 
   const fields = {
     occurred_at: occurred,
@@ -85,7 +94,10 @@ export async function saveTransaction(fd: FormData) {
   let id = f.id || "";
   if (id) {
     const { error } = await db.from("transactions").update(fields).eq("id", id).eq("user_id", uid);
-    if (error) throw new Error("Could not save");
+    if (error) {
+      console.error("saveTransaction update", error);
+      back(returnTo, "Could not save that transaction.");
+    }
   } else {
     const ins = await db.from("transactions").insert({
       ...fields,
@@ -96,7 +108,10 @@ export async function saveTransaction(fd: FormData) {
       merchant_raw: f.merchant || null,
       classifier: "manual",
     }).select("id").single();
-    if (ins.error) throw new Error("Could not save");
+    if (ins.error) {
+      console.error("saveTransaction insert", ins.error);
+      back(returnTo, "Could not save that transaction.");
+    }
     id = ins.data.id;
   }
 
@@ -159,7 +174,9 @@ export async function quickAdd(fd: FormData) {
 
 export async function setClaimStatus(fd: FormData) {
   const { db, uid } = await getContext();
-  const status = z.enum(CLAIM).parse(str(fd, "status"));
+  const st = z.enum(CLAIM).safeParse(str(fd, "status"));
+  if (!st.success) back("/balances", "Unknown claim status.");
+  const status = st.data;
   const ids = fd.getAll("id").filter((x): x is string => typeof x === "string");
   if (ids.length) await db.from("transactions").update({ claim_status: status }).in("id", ids).eq("user_id", uid).eq("allocation", "work");
   revalidatePath("/balances");
@@ -167,7 +184,7 @@ export async function setClaimStatus(fd: FormData) {
 
 export async function settleShare(fd: FormData) {
   const { db, uid } = await getContext();
-  const id = z.string().uuid().parse(str(fd, "id"));
+  const id = str(fd, "id");
   const undo = str(fd, "undo") === "1";
   await db.from("shared_shares").update({ settled_at: undo ? null : new Date().toISOString() }).eq("id", id).eq("user_id", uid);
   revalidatePath("/balances");
@@ -197,30 +214,45 @@ export async function createIngestKey(_prev: unknown, fd: FormData): Promise<{ k
 
 export async function revokeIngestKey(fd: FormData) {
   const { db, uid } = await getContext();
-  const id = z.string().uuid().parse(str(fd, "id"));
+  const id = str(fd, "id");
   await db.from("ingest_keys").update({ revoked_at: new Date().toISOString() }).eq("id", id).eq("user_id", uid);
   revalidatePath("/settings");
 }
 
 export async function updateAiSettings(fd: FormData) {
   const { db, profile } = await getContext();
-  if (!profile?.is_owner) throw new Error("Only the owner can change AI settings");
-  const cap = z.coerce.number().min(0).max(50).parse(str(fd, "cap"));
+  if (!profile?.is_owner) back("/settings", "Only the owner can change AI settings.");
+  const capRes = z.coerce.number().min(0).max(50).safeParse(str(fd, "cap"));
+  if (!capRes.success) back("/settings", "The monthly cap must be between 0 and 50 USD.");
+  const cap = capRes.data;
   await db.from("app_settings").update({ ai_enabled: fd.get("enabled") === "on", ai_monthly_cap_usd: cap, updated_at: new Date().toISOString() }).eq("id", true);
   revalidatePath("/settings");
 }
 
 export async function inviteEmail(fd: FormData) {
-  const { db, uid, profile } = await getContext();
-  if (!profile?.is_owner) throw new Error("Only the owner can invite");
-  const email = z.string().email().parse(str(fd, "email").toLowerCase());
-  await db.from("allowed_emails").upsert({ email, invited_by: uid });
+  const { db, uid, profile, households } = await getContext();
+  if (!profile?.is_owner) back("/settings", "Only the owner can invite people.");
+  const emailRes = z.string().email().safeParse(str(fd, "email").toLowerCase());
+  if (!emailRes.success) back("/settings", "That doesn't look like an email address.");
+  const email = emailRes.data;
+  const hh = fd.get("household") === "on" ? households.find((h) => h.owner_id === uid) ?? null : null;
+  const { error } = await db.from("allowed_emails").upsert({ email, invited_by: uid, household_id: hh?.id ?? null });
+  if (error) {
+    console.error("inviteEmail", error);
+    back("/settings", "Could not save the invite.");
+  }
+  if (hh) {
+    // Already signed in before? Add them to the household now.
+    const p = await db.from("profiles").select("id").eq("email", email).maybeSingle();
+    if (p.data) await db.from("household_members").upsert({ household_id: hh.id, user_id: p.data.id });
+  }
   revalidatePath("/settings");
+  back("/settings", `Invited ${email}. They can now sign in with Google${hh ? ` and will join ${hh.name}` : ""}.`, "ok");
 }
 
 export async function removeInvite(fd: FormData) {
   const { db, profile } = await getContext();
-  if (!profile?.is_owner) throw new Error("Only the owner can remove invites");
+  if (!profile?.is_owner) back("/settings", "Only the owner can remove invites.");
   await db.from("allowed_emails").delete().eq("email", str(fd, "email"));
   revalidatePath("/settings");
 }
@@ -228,23 +260,39 @@ export async function removeInvite(fd: FormData) {
 export async function saveHousehold(fd: FormData) {
   const { db, uid } = await getContext();
   const name = str(fd, "name").slice(0, 60) || "Household";
-  const budget = z.coerce.number().min(0).max(1_000_000).parse(str(fd, "budget") || "800");
+  const budgetRes = z.coerce.number().min(0).max(1_000_000).safeParse(str(fd, "budget") || "800");
+  if (!budgetRes.success) back("/settings", "Budget must be a number.");
   const id = str(fd, "id");
-  if (id) await db.from("households").update({ name, monthly_budget: budget }).eq("id", id).eq("owner_id", uid);
-  else await db.from("households").insert({ name, monthly_budget: budget, owner_id: uid });
+  const { error } = id
+    ? await db.from("households").update({ name, monthly_budget: budgetRes.data }).eq("id", id).eq("owner_id", uid)
+    : await db.from("households").insert({ name, monthly_budget: budgetRes.data, owner_id: uid });
+  if (error) {
+    console.error("saveHousehold", error);
+    back("/settings", "Could not save the household.");
+  }
   revalidatePath("/", "layout");
+  back("/settings", "Household saved.", "ok");
 }
 
 export async function addHouseholdMember(fd: FormData) {
   const { db, uid } = await getContext();
-  const hid = z.string().uuid().parse(str(fd, "household_id"));
-  const email = z.string().email().parse(str(fd, "email").toLowerCase());
+  const hid = str(fd, "household_id");
+  const emailRes = z.string().email().safeParse(str(fd, "email").toLowerCase());
+  if (!emailRes.success) back("/settings", "That doesn't look like an email address.");
+  const email = emailRes.data;
+  const owns = await db.from("households").select("id, name").eq("id", hid).eq("owner_id", uid).maybeSingle();
+  if (!owns.data) back("/settings", "You can only add members to your own household.");
   const p = await db.from("profiles").select("id").eq("email", email).maybeSingle();
-  if (!p.data) throw new Error("That person needs to sign in once first");
-  const owns = await db.from("households").select("id").eq("id", hid).eq("owner_id", uid).maybeSingle();
-  if (!owns.data) throw new Error("Not your household");
-  await db.from("household_members").upsert({ household_id: hid, user_id: p.data.id });
+  if (p.data) {
+    await db.from("household_members").upsert({ household_id: hid, user_id: p.data.id });
+    revalidatePath("/settings");
+    back("/settings", `${email} added to ${owns.data.name}.`, "ok");
+  }
+  // Not signed in yet: attach the household to their invite so they join on first sign-in.
+  const inv = await db.from("allowed_emails").update({ household_id: hid }).eq("email", email).select("email");
+  if (!inv.data?.length) back("/settings", `Invite ${email} first (under "Who can sign in"), ticking "Add to household".`);
   revalidatePath("/settings");
+  back("/settings", `${email} will join ${owns.data.name} when they first sign in.`, "ok");
 }
 
 export async function addCategory(fd: FormData) {
@@ -263,9 +311,9 @@ export async function setAutoAccept(fd: FormData) {
 /** Turn an email the app skipped into a pending draft to fill in. */
 export async function promoteEmail(fd: FormData) {
   const { db, uid, profile } = await getContext();
-  const id = z.string().uuid().parse(str(fd, "id"));
+  const id = str(fd, "id");
   const src = await db.from("source_emails").select("id, received_at, from_address, subject").eq("id", id).eq("user_id", uid).single();
-  if (src.error) throw new Error("Not found");
+  if (src.error) back("/missed", "That email could not be found.");
   const base = profile?.base_currency ?? "SGD";
   const tx = await db.from("transactions").insert({
     user_id: uid,
@@ -283,6 +331,6 @@ export async function promoteEmail(fd: FormData) {
     classifier: "manual",
     needs_manual_amount: true,
   }).select("id").single();
-  if (tx.error) throw new Error("Could not create draft");
+  if (tx.error) back("/missed", "A draft for this email already exists, or it could not be created.");
   redirect(`/transactions/${tx.data.id}`);
 }

@@ -3,19 +3,22 @@ import { getContext, monthRange, shiftMonth } from "@/lib/server/context";
 import { householdMonth } from "@/lib/server/summary";
 import { markReimbursed } from "../actions";
 import { money, sgtDate } from "@/lib/format";
+import { Flash } from "@/app/Flash";
 import { Nav } from "../Nav";
 
 export const metadata = { title: "Household · Expense Tracker" };
 
-export default async function HouseholdPage({ searchParams }: { searchParams: Promise<{ m?: string }> }) {
+export default async function HouseholdPage({ searchParams }: { searchParams: Promise<{ m?: string; error?: string; ok?: string }> }) {
   const sp = await searchParams;
+  const flash = sp;
   const { db, uid, households, pendingCount } = await getContext();
   const hh = households[0];
   if (!hh) {
     return (
       <>
         <Nav pending={pendingCount} />
-        <main className="wrap"><h1>Household</h1><div className="card">No household yet. <Link href="/settings">Create one in Settings</Link>.</div></main>
+        <main className="wrap">
+        <Flash error={flash.error} ok={flash.ok} /><h1>Household</h1><div className="card">No household yet. <Link href="/settings">Create one in Settings</Link>.</div></main>
       </>
     );
   }

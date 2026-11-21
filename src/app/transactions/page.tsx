@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { getContext, monthRange, shiftMonth } from "@/lib/server/context";
+import { Flash } from "@/app/Flash";
 import { Nav } from "../Nav";
 import { TxnForm } from "../TxnForm";
 import { quickAdd } from "../actions";
@@ -9,8 +10,9 @@ export const metadata = { title: "Transactions · Expense Tracker" };
 
 const ALLOC: Record<string, string> = { personal: "Personal", work: "Work", shared: "Shared", household: "Household" };
 
-export default async function TransactionsPage({ searchParams }: { searchParams: Promise<{ m?: string; status?: string }> }) {
+export default async function TransactionsPage({ searchParams }: { searchParams: Promise<{ m?: string; status?: string; error?: string; ok?: string }> }) {
   const sp = await searchParams;
+  const flash = sp;
   const { db, uid, categories, households, pendingCount } = await getContext();
   const { ym, start, end } = monthRange(sp.m);
   const status = sp.status === "rejected" ? "rejected" : "confirmed";
@@ -23,6 +25,7 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
     <>
       <Nav pending={pendingCount} />
       <main className="wrap">
+        <Flash error={flash.error} ok={flash.ok} />
         <div className="row" style={{ justifyContent: "space-between" }}>
           <h1>Transactions · {ym}</h1>
           <div className="row">

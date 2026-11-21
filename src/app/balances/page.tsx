@@ -2,11 +2,13 @@ import Link from "next/link";
 import { getContext } from "@/lib/server/context";
 import { setClaimStatus, settleShare } from "../actions";
 import { money, sgtDate } from "@/lib/format";
+import { Flash } from "@/app/Flash";
 import { Nav } from "../Nav";
 
 export const metadata = { title: "Balances · Expense Tracker" };
 
-export default async function BalancesPage() {
+export default async function BalancesPage({ searchParams }: { searchParams: Promise<{ error?: string; ok?: string }> }) {
+  const flash = await searchParams;
   const { db, uid, pendingCount } = await getContext();
   const [{ data: claims }, { data: shares }] = await Promise.all([
     db.from("transactions").select("id, occurred_at, merchant, amount, currency, claim_status, description")
@@ -29,6 +31,7 @@ export default async function BalancesPage() {
     <>
       <Nav pending={pendingCount} />
       <main className="wrap">
+        <Flash error={flash.error} ok={flash.ok} />
         <h1>Balances</h1>
         <h2>Work claims</h2>
         <form action={setClaimStatus} className="card table-wrap">

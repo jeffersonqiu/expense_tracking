@@ -10,6 +10,8 @@ they go only into the Supabase, Vercel, OpenRouter and Apps Script dashboards.
    (`sb_publishable_…`) and **secret key** (`sb_secret_…`, server only).
 3. **SQL Editor → New query**: paste the whole of
    `supabase/migrations/0001_init.sql`, click **Run**. It should say "Success".
+   Repeat for every later file in `supabase/migrations/` in number order
+   (`0002_…`, `0003_…`), each in its own query.
 4. New query, run (with your own Gmail address):
    ```sql
    insert into public.allowed_emails (email) values ('you@gmail.com');
@@ -63,8 +65,9 @@ Follow [`apps-script/README.md`](apps-script/README.md). Afterwards Settings sho
 "Last seen: just now". Optionally run the 12-month history import.
 
 ## 8. Invite your spouse
-1. Settings → **Who can sign in** → invite their Gmail.
-2. They sign in once, then you add them under **Household → Add member**.
+1. Settings → **Who can sign in** → enter their Gmail, keep **Add to household**
+   ticked → **Invite**.
+2. They sign in with Google and join the household automatically.
 3. They create their own connector key and install the Apps Script in their
    own Google account.
 

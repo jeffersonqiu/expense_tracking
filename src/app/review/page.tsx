@@ -1,11 +1,13 @@
 import { getContext } from "@/lib/server/context";
+import { Flash } from "@/app/Flash";
 import { Nav } from "../Nav";
 import { TxnForm, type TxnRow } from "../TxnForm";
 import { money, sgtDateTime } from "@/lib/format";
 
 export const metadata = { title: "Review · Expense Tracker" };
 
-export default async function ReviewPage() {
+export default async function ReviewPage({ searchParams }: { searchParams: Promise<{ error?: string; ok?: string }> }) {
+  const flash = await searchParams;
   const { db, uid, categories, households, pendingCount } = await getContext();
   const { data } = await db
     .from("transactions")
@@ -17,6 +19,7 @@ export default async function ReviewPage() {
     <>
       <Nav pending={pendingCount} />
       <main className="wrap">
+        <Flash error={flash.error} ok={flash.ok} />
         <h1>Review ({pendingCount})</h1>
         <p className="muted small">Oldest first. Every captured spend waits here until you accept or reject it.</p>
         {rows.length === 0 && <div className="card">All caught up.</div>}

@@ -1,11 +1,13 @@
 import { getContext } from "@/lib/server/context";
 import { promoteEmail } from "../actions";
 import { sgtDateTime } from "@/lib/format";
+import { Flash } from "@/app/Flash";
 import { Nav } from "../Nav";
 
 export const metadata = { title: "Skipped emails · Expense Tracker" };
 
-export default async function MissedPage() {
+export default async function MissedPage({ searchParams }: { searchParams: Promise<{ error?: string; ok?: string }> }) {
+  const flash = await searchParams;
   const { db, uid, pendingCount } = await getContext();
   const since = new Date(Date.now() - 30 * 86400e3).toISOString();
   const { data } = await db.from("source_emails")
@@ -16,6 +18,7 @@ export default async function MissedPage() {
     <>
       <Nav pending={pendingCount} />
       <main className="wrap">
+        <Flash error={flash.error} ok={flash.ok} />
         <h1>Skipped emails (30 days)</h1>
         <p className="muted small">Emails the connector sent that did not become a transaction. If one was really a spend, turn it into a draft.</p>
         <div className="card table-wrap">
