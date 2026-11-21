@@ -14,6 +14,8 @@ PSQL=(psql -h /tmp -p "$PORT" -U postgres -v ON_ERROR_STOP=1 -q)
 "${PSQL[@]}" -c "create database app"
 "${PSQL[@]}" -d app -f tests/db/auth_stub.sql
 for f in supabase/migrations/*.sql; do "${PSQL[@]}" -d app -f "$f"; done
+# Migrations must be safe to apply twice (the deploy workflow may re-run them)
+for f in supabase/migrations/*.sql; do "${PSQL[@]}" -d app -f "$f"; done
 "${PSQL[@]}" -d app -f tests/db/grants.sql
 if [ -n "${1:-}" ]; then "${PSQL[@]}" -d app -f "$1"; exit; fi
 "${PSQL[@]}" -d app -f tests/db/rls_test.sql | tee /dev/stderr | grep -q "DB TESTS PASSED"

@@ -8,10 +8,15 @@ they go only into the Supabase, Vercel, OpenRouter and Apps Script dashboards.
    in a password manager.
 2. **Settings → API Keys** (main tab, not "Legacy"): note the **publishable key**
    (`sb_publishable_…`) and **secret key** (`sb_secret_…`, server only).
-3. **SQL Editor → New query**: paste the whole of
-   `supabase/migrations/0001_init.sql`, click **Run**. It should say "Success".
-   Repeat for every later file in `supabase/migrations/` in number order
-   (`0002_…`, `0003_…`), each in its own query.
+3. **Database tables are created automatically** by the GitHub Action
+   `.github/workflows/db-migrate.yml` whenever files in `supabase/migrations/`
+   change. One-time setup: GitHub repo → **Settings → Secrets and variables →
+   Actions → New repository secret**:
+   - `SUPABASE_ACCESS_TOKEN`: create at supabase.com → Account → **Access Tokens**
+   - `SUPABASE_DB_PASSWORD`: the database password from step 1
+   Then run it once: **Actions → Database migrations → Run workflow**.
+   (Manual alternative: paste each file in `supabase/migrations/` into the SQL
+   Editor in number order. They are safe to re-run.)
 4. New query, run (with your own Gmail address):
    ```sql
    insert into public.allowed_emails (email) values ('you@gmail.com');

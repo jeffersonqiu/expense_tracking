@@ -1,4 +1,4 @@
--- 0001_init: core schema for the expense tracker.
+-- 0001_init: core schema for the expense tracker. Safe to re-run.
 -- Conventions: every user-owned row has user_id; money columns are currency-neutral.
 
 create extension if not exists pgcrypto;
@@ -6,13 +6,13 @@ create extension if not exists pgcrypto;
 -- ---------------------------------------------------------------------------
 -- Access control: who may use the app
 -- ---------------------------------------------------------------------------
-create table public.allowed_emails (
+create table if not exists public.allowed_emails (
   email text primary key check (email = lower(email)),
   invited_by uuid references auth.users(id) on delete set null,
   created_at timestamptz not null default now()
 );
 
-create table public.profiles (
+create table if not exists public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   email text not null,
   display_name text,
@@ -24,7 +24,7 @@ create table public.profiles (
 -- ---------------------------------------------------------------------------
 -- Households: owner funds the household budget; members may pay first.
 -- ---------------------------------------------------------------------------
-create table public.households (
+create table if not exists public.households (
   id uuid primary key default gen_random_uuid(),
   name text not null,
   owner_id uuid not null references auth.users(id) on delete cascade,
@@ -33,7 +33,7 @@ create table public.households (
   created_at timestamptz not null default now()
 );
 
-create table public.household_members (
+create table if not exists public.household_members (
   household_id uuid not null references public.households(id) on delete cascade,
   user_id uuid not null references auth.users(id) on delete cascade,
   primary key (household_id, user_id)
@@ -42,7 +42,7 @@ create table public.household_members (
 -- ---------------------------------------------------------------------------
 -- Categories
 -- ---------------------------------------------------------------------------
-create table public.categories (
+create table if not exists public.categories (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
   name text not null,
@@ -53,7 +53,7 @@ create table public.categories (
 -- ---------------------------------------------------------------------------
 -- Ingestion
 -- ---------------------------------------------------------------------------
-create table public.ingest_keys (
+create table if not exists public.ingest_keys (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
   label text not null default 'Apps Script',
@@ -64,7 +64,7 @@ create table public.ingest_keys (
   revoked_at timestamptz
 );
 
-create table public.script_heartbeats (
+create table if not exists public.script_heartbeats (
   user_id uuid primary key references auth.users(id) on delete cascade,
   last_seen_at timestamptz not null,
   scanned int not null default 0,
@@ -73,7 +73,7 @@ create table public.script_heartbeats (
   last_error text
 );
 
-create table public.source_emails (
+create table if not exists public.source_emails (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
   gmail_message_id text not null,
@@ -89,12 +89,12 @@ create table public.source_emails (
   created_at timestamptz not null default now(),
   unique (user_id, gmail_message_id)
 );
-create index source_emails_user_received on public.source_emails (user_id, received_at desc);
+create index if not exists source_emails_user_received on public.source_emails (user_id, received_at desc);
 
 -- ---------------------------------------------------------------------------
 -- Transactions
 -- ---------------------------------------------------------------------------
-create table public.transactions (
+create table if not exists public.transactions (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
   source_email_id uuid references public.source_emails(id) on delete set null,
@@ -130,11 +130,11 @@ create table public.transactions (
   check (allocation <> 'work' or claim_status is not null),
   check (allocation <> 'household' or household_id is not null)
 );
-create index transactions_user_time on public.transactions (user_id, occurred_at desc);
-create index transactions_user_status on public.transactions (user_id, status);
-create index transactions_household on public.transactions (household_id, occurred_at desc) where household_id is not null;
+create index if not exists transactions_user_time on public.transactions (user_id, occurred_at desc);
+create index if not exists transactions_user_status on public.transactions (user_id, status);
+create index if not exists transactions_household on public.transactions (household_id, occurred_at desc) where household_id is not null;
 
-create table public.shared_shares (
+create table if not exists public.shared_shares (
   id uuid primary key default gen_random_uuid(),
   transaction_id uuid not null references public.transactions(id) on delete cascade,
   user_id uuid not null references auth.users(id) on delete cascade,
@@ -144,7 +144,7 @@ create table public.shared_shares (
   created_at timestamptz not null default now()
 );
 
-create table public.merchant_rules (
+create table if not exists public.merchant_rules (
   user_id uuid not null references auth.users(id) on delete cascade,
   merchant_key text not null,
   category_id uuid references public.categories(id) on delete set null,
@@ -159,7 +159,7 @@ create table public.merchant_rules (
 -- ---------------------------------------------------------------------------
 -- AI cost control + settings + FX
 -- ---------------------------------------------------------------------------
-create table public.ai_usage (
+create table if not exists public.ai_usage (
   id bigint generated always as identity primary key,
   user_id uuid references auth.users(id) on delete set null,
   model text not null,
@@ -169,17 +169,17 @@ create table public.ai_usage (
   cost_usd numeric(12,6) not null default 0,
   created_at timestamptz not null default now()
 );
-create index ai_usage_created on public.ai_usage (created_at);
+create index if not exists ai_usage_created on public.ai_usage (created_at);
 
-create table public.app_settings (
+create table if not exists public.app_settings (
   id boolean primary key default true check (id),
   ai_enabled boolean not null default true,
   ai_monthly_cap_usd numeric(10,2) not null default 1.00 check (ai_monthly_cap_usd >= 0),
   updated_at timestamptz not null default now()
 );
-insert into public.app_settings (id) values (true);
+insert into public.app_settings (id) values (true) on conflict (id) do nothing;
 
-create table public.fx_rates (
+create table if not exists public.fx_rates (
   rate_date date not null,
   base char(3) not null,
   quote char(3) not null,
@@ -211,6 +211,7 @@ begin
   return new;
 end;
 $$;
+drop trigger if exists transactions_touch on public.transactions;
 create trigger transactions_touch before update on public.transactions
   for each row execute function public.touch_updated_at();
 
@@ -241,6 +242,7 @@ begin
   return new;
 end;
 $$;
+drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created after insert on auth.users
   for each row execute function public.handle_new_user();
 
@@ -263,59 +265,81 @@ alter table public.app_settings enable row level security;
 alter table public.fx_rates enable row level security;
 
 -- allow-list: owner manages, users can see their own entry
+drop policy if exists allowed_emails_owner on public.allowed_emails;
 create policy allowed_emails_owner on public.allowed_emails for all to authenticated
   using (public.is_owner()) with check (public.is_owner());
 
 -- profiles: read/update own; owner may read all (to see invitees)
+drop policy if exists profiles_read on public.profiles;
 create policy profiles_read on public.profiles for select to authenticated
   using (id = auth.uid() or public.is_owner());
+drop policy if exists profiles_update on public.profiles;
 create policy profiles_update on public.profiles for update to authenticated
   using (id = auth.uid()) with check (id = auth.uid());
 
 -- households
+drop policy if exists households_read on public.households;
 create policy households_read on public.households for select to authenticated
   using (public.is_household_member(id));
+drop policy if exists households_owner_write on public.households;
 create policy households_owner_write on public.households for all to authenticated
   using (owner_id = auth.uid()) with check (owner_id = auth.uid());
+drop policy if exists household_members_read on public.household_members;
 create policy household_members_read on public.household_members for select to authenticated
   using (public.is_household_member(household_id));
+drop policy if exists household_members_owner_write on public.household_members;
 create policy household_members_owner_write on public.household_members for all to authenticated
   using (exists (select 1 from public.households h where h.id = household_id and h.owner_id = auth.uid()))
   with check (exists (select 1 from public.households h where h.id = household_id and h.owner_id = auth.uid()));
 
 -- simple own-row tables
+drop policy if exists categories_own on public.categories;
 create policy categories_own on public.categories for all to authenticated
   using (user_id = auth.uid()) with check (user_id = auth.uid());
+drop policy if exists ingest_keys_own_read on public.ingest_keys;
 create policy ingest_keys_own_read on public.ingest_keys for select to authenticated
   using (user_id = auth.uid());
+drop policy if exists ingest_keys_own_revoke on public.ingest_keys;
 create policy ingest_keys_own_revoke on public.ingest_keys for update to authenticated
   using (user_id = auth.uid()) with check (user_id = auth.uid());
+drop policy if exists heartbeats_own on public.script_heartbeats;
 create policy heartbeats_own on public.script_heartbeats for select to authenticated
   using (user_id = auth.uid());
+drop policy if exists source_emails_own on public.source_emails;
 create policy source_emails_own on public.source_emails for select to authenticated
   using (user_id = auth.uid());
+drop policy if exists merchant_rules_own on public.merchant_rules;
 create policy merchant_rules_own on public.merchant_rules for all to authenticated
   using (user_id = auth.uid()) with check (user_id = auth.uid());
+drop policy if exists shared_shares_own on public.shared_shares;
 create policy shared_shares_own on public.shared_shares for all to authenticated
   using (user_id = auth.uid()) with check (user_id = auth.uid());
 
 -- transactions: own rows; household members can read household rows
+drop policy if exists transactions_read on public.transactions;
 create policy transactions_read on public.transactions for select to authenticated
   using (user_id = auth.uid() or (household_id is not null and public.is_household_member(household_id)));
+drop policy if exists transactions_insert on public.transactions;
 create policy transactions_insert on public.transactions for insert to authenticated
   with check (user_id = auth.uid() and (household_id is null or public.is_household_member(household_id)));
+drop policy if exists transactions_update on public.transactions;
 create policy transactions_update on public.transactions for update to authenticated
   using (user_id = auth.uid())
   with check (user_id = auth.uid() and (household_id is null or public.is_household_member(household_id)));
+drop policy if exists transactions_delete on public.transactions;
 create policy transactions_delete on public.transactions for delete to authenticated
   using (user_id = auth.uid());
 
 -- AI usage & settings: owner reads; settings updated by owner
+drop policy if exists ai_usage_owner on public.ai_usage;
 create policy ai_usage_owner on public.ai_usage for select to authenticated
   using (public.is_owner() or user_id = auth.uid());
+drop policy if exists app_settings_read on public.app_settings;
 create policy app_settings_read on public.app_settings for select to authenticated using (true);
+drop policy if exists app_settings_owner on public.app_settings;
 create policy app_settings_owner on public.app_settings for update to authenticated
   using (public.is_owner()) with check (public.is_owner());
+drop policy if exists fx_rates_read on public.fx_rates;
 create policy fx_rates_read on public.fx_rates for select to authenticated using (true);
 
 -- Reimbursing a spouse's household spend is done by the household owner via a
