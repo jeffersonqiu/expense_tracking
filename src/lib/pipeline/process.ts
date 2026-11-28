@@ -144,7 +144,7 @@ export async function processEmail(email: IncomingEmail, ctx: ProcessContext): P
       suggestion.confidence.trip = 0.6;
     }
 
-    if (ctx.ai && t.kind !== "transfer") {
+    if (ctx.ai && t.kind !== "transfer" && t.kind !== "card_payment") {
       const knowledge = await ctx.knowledge({ merchantKey: key, merchantRaw: t.merchantRaw, counterparty: t.counterpartyType });
       const d = await ctx.ai.decide({
         merchant: t.merchantRaw, amount: t.amount, currency: t.currency, snippet: compactBody(email.text).slice(0, 1500),

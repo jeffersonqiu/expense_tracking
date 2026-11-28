@@ -31,6 +31,7 @@ export async function reparsePending(db: SupabaseClient, userId: string, base: s
       kind: t.kind, merchant_raw: t.merchantRaw.slice(0, 200), merchant: displayMerchant(t.merchantRaw), merchant_key: key,
       counterparty_type: t.counterpartyType, payment_method: t.paymentMethod ?? null, source_role: t.role,
       description: t.description ?? null, needs_manual_amount: false,
+      ...(t.kind === "card_payment" ? { status: "confirmed", reviewed_at: new Date().toISOString() } : {}),
     }).eq("id", row.id).eq("user_id", userId);
     if (error) {
       console.error("reparsePending", row.id, error);
@@ -38,7 +39,16 @@ export async function reparsePending(db: SupabaseClient, userId: string, base: s
     }
     await db.from("source_emails").update({ parser: r.parser, status: "transaction", reason: null }).eq("id", e.id).eq("user_id", userId);
     fixed++;
-
+    if (t.kind === "card_payment") {
+      // The bank's "paid" alert and the card's "payment received" are the same payment.
+      const at = new Date(t.occurredAt).getTime();
+      const twin = await db.from("transactions").select("id")
+        .eq("user_id", userId).eq("kind", "card_payment").eq("currency", t.currency).eq("amount", t.amount)
+        .is("duplicate_of", null).neq("status", "rejected").neq("id", row.id)
+        .gte("occurred_at", new Date(at - 3 * 3600e3).toISOString()).lte("occurred_at", new Date(at + 3 * 3600e3).toISOString())
+        .limit(1).maybeSingle();
+      if (twin.data) await db.from("transactions").update({ status: "rejected", duplicate_of: twin.data.id }).eq("id", row.id).eq("user_id", userId);
+    }
   }
 
   // Wise emails the first version of the Wise reader wrongly skipped: read them again now.

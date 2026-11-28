@@ -107,7 +107,7 @@ export class OpenRouterHaiku implements Decider {
         amount: { type: ["number", "null"], description: "Total paid, exactly as written; null if absent." },
         currency: { type: ["string", "null"], description: "ISO 4217 code, e.g. SGD." },
         merchant: { type: ["string", "null"] },
-        kind: { type: "string", enum: ["spend", "refund", "investment", "transfer", "income"] },
+        kind: { type: "string", enum: ["spend", "refund", "investment", "transfer", "income", "card_payment"], description: "card_payment = paying off a credit card bill (not spending)." },
       },
     };
     const user = `From: ${email.from}\nSubject: ${email.subject}\nDate: ${email.date}\n\n<email>\n${compactBody(email.text).slice(0, 6000)}\n</email>`;

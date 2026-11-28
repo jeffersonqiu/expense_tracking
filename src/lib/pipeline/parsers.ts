@@ -10,6 +10,14 @@ function money(currency: string | null | undefined, raw: string | undefined) {
   return { currency, amount };
 }
 
+/**
+ * Paying a credit card: UOB Cards, "HSBC CC", "CIMB CC", Citibank (its card accounts),
+ * Amex, "... Credit Card". Bills to utilities etc. stay as spending.
+ */
+export function isCardPayee(payee: string): boolean {
+  return /\b(cc|credit ?cards?|cards|card|citi(bank)?|amex|american express|diners)\b/i.test(payee);
+}
+
 // ---------------------------------------------------------------------------
 // UOB (unialerts@uobgroup.com)
 // ---------------------------------------------------------------------------
@@ -83,6 +91,48 @@ export const uob: Parser = {
         paymentMethod: `UOB card ${m[3]}`,
         role: "rail",
       }]);
+    }
+
+    // Bill payments: "You made/scheduled a bill payment(s) of SGD 2377.83 to UOB Cards on your
+    // a/c ending 0856 at 1:13PM SGT, 28 Nov 26. Bill ref: ending 9742."
+    m = /You made(?:\/scheduled)? a bill payment\(?s?\)? of ([A-Z]{3}) ?([\d,]+\.\d{2}) to (.+?) on your a\/c ending (\d{4}) at (\d{1,2}:\d{2}\s?[AP]M) SGT, (\d{1,2} [A-Za-z]{3} \d{2,4})\.(?:\s*Bill ref: ending (\w+))?/i.exec(t);
+    if (m) {
+      const mo = money(m[1], m[2]);
+      if (!mo) return ignore("uob", "unreadable amount");
+      const payee = m[3]!.trim();
+      const card = isCardPayee(payee);
+      return ok("uob", [{
+        ...mo,
+        occurredAt: parseSgtDate(m[6]!, m[5]) ?? e.date,
+        kind: card ? "card_payment" : "spend",
+        merchantRaw: card && m[7] ? `${payee} ••${m[7]}` : payee,
+        counterpartyType: "business",
+        paymentMethod: `UOB a/c ${m[4]}`,
+        role: "rail",
+        description: m[7] ? `Bill ref ending ${m[7]}` : undefined,
+      }]);
+    }
+
+    // Funds transfers: "You made/scheduled a funds transfer(s) of SGD 760.70 to CITIBANK a/c ending 3064
+    // from your a/c ending 0856 at 1:09PM SGT, 28 Nov 26." To a card account = card payment.
+    m = /You made(?:\/scheduled)? a funds transfer\(?s?\)? of ([A-Z]{3}) ?([\d,]+\.\d{2}) to (.+?) a\/c ending (\w+) from your a\/c ending (\d{4}) at (\d{1,2}:\d{2}\s?[AP]M) SGT, (\d{1,2} [A-Za-z]{3} \d{2,4})/i.exec(t);
+    if (m) {
+      const mo = money(m[1], m[2]);
+      if (!mo) return ignore("uob", "unreadable amount");
+      const bank = m[3]!.trim();
+      const card = isCardPayee(bank);
+      return ok("uob", [{
+        ...mo,
+        occurredAt: parseSgtDate(m[7]!, m[6]) ?? e.date,
+        kind: card ? "card_payment" : "transfer",
+        merchantRaw: `${bank} ••${m[4]}`,
+        counterpartyType: card ? "business" : "unknown",
+        paymentMethod: `UOB a/c ${m[5]}`,
+        role: "rail",
+      }]);
+    }
+    if (/Your FAST funds transfer to .+ is successful/i.test(t)) {
+      return ignore("uob", "transfer success confirmation (amount comes in a separate alert)");
     }
 
     if (/eStatement|eAdvice|statement is ready/i.test(t)) return ignore("uob", "statement notice");
@@ -330,7 +380,55 @@ export const wise: Parser = {
   },
 };
 
-export const PARSERS: Parser[] = [uob, ocbc, tada, grab, shopee, stripe, simba, coinhako, wise];
+// ---------------------------------------------------------------------------
+// Citibank (alerts@citibank.com.sg)
+//   "Credit Card Payment Received Alert … Citi Cash Back+ Card: Card Number : XXXX-XXXX-XXXX-3064
+//    Transaction Date : 28/11/2026 Transaction Amount : SGD 760.70"
+//   "there is a charge made on your Citi PremierMiles Card: Account Number : XXXX-…-8630
+//    Transaction date : 28/11/26 Transaction time : 14:26:51 Transaction amount : IDR69000.00
+//    Transaction details : HIJOO SALAD PANGLIMA P JAKARTA SLT IDN"
+// ---------------------------------------------------------------------------
+export const citi: Parser = {
+  id: "citi",
+  matches: (e) => fromDomain(e.from, "citibank.com.sg") || fromDomain(e.from, "citi.com"),
+  parse(e) {
+    const t = flatten(compactBody(e.text));
+    const cardName = /on your (Citi [^:]+?Card)\s*:/i.exec(t)?.[1]?.trim() ?? "Citi card";
+    const last4 = /(?:Card|Account) Number\s*:\s*X{4}-X{4}-X{4}-?\s*(\d{4})/i.exec(t)?.[1];
+    const amt = /Transaction amount\s*:\s*([A-Z]{3})\s?([\d,]+(?:\.\d{1,2})?)/i.exec(t);
+    const date = /Transaction date\s*:\s*(\d{1,2})\/(\d{1,2})\/(\d{2,4})/i.exec(t);
+    const time = /Transaction time\s*:\s*(\d{1,2}:\d{2})(?::\d{2})?/i.exec(t)?.[1];
+    const occurredAt = (() => {
+      if (!date) return e.date;
+      const y = date[3]!.length === 2 ? `20${date[3]}` : date[3]!;
+      const iso = new Date(`${y}-${date[2]!.padStart(2, "0")}-${date[1]!.padStart(2, "0")}T${time ?? "12:00"}:00+08:00`);
+      if (Number.isNaN(iso.getTime())) return e.date;
+      // Same day as the email: keep the email's exact time when the alert has none.
+      return time ? iso.toISOString() : sameDayOrEmail(iso.toISOString(), e.date);
+    })();
+    const method = `${cardName}${last4 ? ` ••${last4}` : ""}`;
+
+    if (/payment received/i.test(e.subject + " " + t)) {
+      const mo = amt ? money(amt[1], amt[2]) : null;
+      if (!mo) return ignore("citi", "payment notice without an amount");
+      return ok("citi", [{
+        ...mo, occurredAt, kind: "card_payment", merchantRaw: method, counterpartyType: "business",
+        paymentMethod: method, role: "receipt", description: "Card payment received",
+      }]);
+    }
+    if (/charge made on your|Credit Card\/Ready Credit Transaction/i.test(e.subject + " " + t)) {
+      const mo = amt ? money(amt[1], amt[2]) : null;
+      const what = /Transaction details\s*:\s*(.+?)(?:\s+Thank you|\s+Citibank Online|$)/i.exec(t)?.[1]?.trim();
+      if (!mo || !what) return ignore("citi", "card alert without amount or merchant");
+      return ok("citi", [{
+        ...mo, occurredAt, kind: "spend", merchantRaw: what, counterpartyType: "business", paymentMethod: method, role: "rail",
+      }]);
+    }
+    return ignore("citi", "account notice");
+  },
+};
+
+export const PARSERS: Parser[] = [uob, ocbc, tada, grab, shopee, stripe, simba, coinhako, wise, citi];
 
 export function runParsers(email: IncomingEmail): ParseResult {
   for (const p of PARSERS) {

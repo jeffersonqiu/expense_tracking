@@ -119,6 +119,9 @@ end $$;
 update public.transactions set allocation = 'personal', claim_status = null, trip_id = null, trip_bucket = null
  where id = '20000000-0000-0000-0000-000000000002';
 
+update public.transactions set kind = 'card_payment' where id = '20000000-0000-0000-0000-000000000002';
+update public.transactions set kind = 'spend' where id = '20000000-0000-0000-0000-000000000002';
+
 -- Giving needs a branch, and a branch only goes with Giving.
 do $$ begin
   update public.transactions set allocation = 'giving' where id = '20000000-0000-0000-0000-000000000002';

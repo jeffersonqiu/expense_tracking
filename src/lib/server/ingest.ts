@@ -147,7 +147,7 @@ export async function ingestEmail(
       source_role: d.role,
       category_id: d.categoryName ? catByName.get(d.categoryName) ?? null : null,
       description: d.description ?? null,
-      status: isDup ? "rejected" : "pending",
+      status: isDup ? "rejected" : d.kind === "card_payment" ? "confirmed" : "pending",
       duplicate_of: isDup ? dup.of : null,
       allocation,
       claim_status: allocation === "work" ? "to_claim" : null,

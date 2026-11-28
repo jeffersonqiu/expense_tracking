@@ -217,6 +217,7 @@ export function TxnForm({
               <option value="refund">Refund</option>
               <option value="investment">Investment</option>
               <option value="transfer">Transfer (not spending)</option>
+              <option value="card_payment">Card payment (not spending)</option>
               <option value="income">Income</option>
             </select>
           </label>

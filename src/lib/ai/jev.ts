@@ -31,6 +31,7 @@ const KIND_CRITERIA: Record<Kind, string> = {
   investment: "The recipient bought an investment such as shares, crypto or funds.",
   transfer: "Money moved between the recipient's own accounts or to a person without buying anything.",
   income: "The recipient received salary, payment or other income.",
+  card_payment: "Paying off a credit card bill (a bank's 'payment received' notice or a transfer to a card account). Not new spending.",
 };
 
 export class JevDecider implements Decider {

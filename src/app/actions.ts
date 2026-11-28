@@ -18,7 +18,7 @@ import { learnForUser } from "@/lib/server/learn";
 import { nearbyTrips, sgtWhen } from "@/lib/pipeline/process";
 import { makeDecider } from "@/lib/server/ingest";
 
-const KINDS = ["spend", "refund", "investment", "transfer", "income"] as const;
+const KINDS = ["spend", "refund", "investment", "transfer", "income", "card_payment"] as const;
 const ALLOCATIONS = ["personal", "work", "trip", "household", "giving"] as const;
 const CLAIM = ["to_claim", "submitted", "reimbursed"] as const;
 

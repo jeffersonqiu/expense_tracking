@@ -1,4 +1,4 @@
-export type Kind = "spend" | "refund" | "investment" | "transfer" | "income";
+export type Kind = "spend" | "refund" | "investment" | "transfer" | "income" | "card_payment";
 export type CounterpartyType = "business" | "individual" | "unknown";
 
 /** What the Apps Script sends for each Gmail message. */

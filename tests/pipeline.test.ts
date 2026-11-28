@@ -269,6 +269,34 @@ describe("compactBody", () => {
   });
 });
 
+describe("card bill payments", () => {
+  it("UOB bill payment to a card is a card payment, not spending", () => {
+    expect(txn(F.uobBillToCard)).toMatchObject({ kind: "card_payment", amount: 2377.83, merchantRaw: "UOB Cards ••2222", paymentMethod: "UOB a/c 1111" });
+    expect(txn(F.uobBillToHsbc)).toMatchObject({ kind: "card_payment", amount: 499.36, merchantRaw: "HSBC CC ••2222" });
+  });
+  it("a bill payment to anything else stays a spend", () => {
+    expect(txn(F.uobBillToUtility)).toMatchObject({ kind: "spend", amount: 86, merchantRaw: "Town Council" });
+  });
+  it("UOB funds transfer to a Citibank card account is a card payment; to another bank, a transfer", () => {
+    expect(txn(F.uobTransferToCiti)).toMatchObject({ kind: "card_payment", amount: 760.7, merchantRaw: "CITIBANK ••3333", occurredAt: "2026-11-28T05:09:00.000Z" });
+    expect(txn(F.uobTransferOwn)).toMatchObject({ kind: "transfer", amount: 1500, merchantRaw: "OCBC ••4444" });
+    expect(runParsers(F.uobFastOk).type).toBe("ignored");
+  });
+  it("Citi 'payment received' gives the amount and card; it pairs with the UOB transfer", () => {
+    const citi = txn(F.citiPaymentReceived);
+    expect(citi).toMatchObject({ kind: "card_payment", amount: 760.7, currency: "SGD", merchantRaw: "Citi Cash Back+ Card ••3333", role: "receipt" });
+    const uob = txn(F.uobTransferToCiti);
+    expect(findDuplicate({ ...citi, merchantKey: "citi" }, [{ id: "u", status: "confirmed", occurredAt: uob.occurredAt, amount: uob.amount, currency: uob.currency, role: uob.role, merchantKey: "citibank" }]))
+      .toEqual({ action: "candidate_is_duplicate", of: "u" });
+  });
+  it("Citi card charge abroad: amount, currency, merchant, time", () => {
+    expect(txn(F.citiCharge)).toMatchObject({ kind: "spend", amount: 69000, currency: "IDR", merchantRaw: "SALAD BAR JAKARTA IDN", paymentMethod: "Citi PremierMiles Card ••5555", occurredAt: "2026-11-28T06:26:00.000Z" });
+  });
+  it("Citi account notices are ignored", () => {
+    expect(runParsers(F.citiNotice).type).toBe("ignored");
+  });
+});
+
 describe("giving", () => {
   it("files donations and red packets under Giving", () => {
     expect(keywordCategory("GIVING.SG DONATION")).toBe("Giving");

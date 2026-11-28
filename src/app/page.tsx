@@ -4,7 +4,7 @@ import { givingPeriod, householdMonth, personalMonth } from "@/lib/server/summar
 import { money, sgtDate } from "@/lib/format";
 import { Shell, Header } from "./ui/Shell";
 import { MonthStepper } from "./ui/MonthStepper";
-import { IconAlert, IconBriefcase, IconChart, IconChevronRight, IconGear, IconHouse, IconInbox, IconHeart, IconPeople, IconPlane } from "./ui/Icons";
+import { IconAlert, IconBriefcase, IconChart, IconChevronRight, IconGear, IconHouse, IconInbox, IconHeart, IconPeople, IconPlane, IconWallet } from "./ui/Icons";
 import { tripTotals, sumTotals } from "@/lib/server/trips";
 
 export default async function Summary({ searchParams }: { searchParams: Promise<{ m?: string }> }) {
@@ -17,7 +17,7 @@ export default async function Summary({ searchParams }: { searchParams: Promise<
   const givingBudget = profile?.giving_monthly_budget == null ? null : Number(profile.giving_monthly_budget);
   const giving = await givingPeriod(db, uid, start, end);
 
-  const [personal, prevPersonal, household, heartbeat, claims, shares, owed, recent] = await Promise.all([
+  const [personal, prevPersonal, household, heartbeat, claims, shares, owed, recent, cardPay] = await Promise.all([
     personalMonth(db, uid, start, end),
     personalMonth(db, uid, prev.start, prev.end),
     hh ? householdMonth(db, hh.id, start, end) : Promise.resolve(null),
@@ -25,8 +25,10 @@ export default async function Summary({ searchParams }: { searchParams: Promise<
     db.from("transactions").select("base_amount").eq("user_id", uid).eq("allocation", "work").eq("status", "confirmed").in("claim_status", ["to_claim", "submitted"]),
     db.from("shared_shares").select("amount, transactions!inner(fx_rate, status)").eq("user_id", uid).is("settled_at", null),
     hh ? db.from("transactions").select("base_amount, kind").eq("household_id", hh.id).eq("allocation", "household").eq("status", "confirmed").is("reimbursed_at", null).neq("user_id", hh.owner_id) : Promise.resolve({ data: [] as { base_amount: number | null; kind: string }[] }),
-    db.from("transactions").select("id, occurred_at, merchant, amount, currency, kind, category_id").eq("user_id", uid).eq("status", "confirmed").gte("occurred_at", start).lt("occurred_at", end).order("occurred_at", { ascending: false }).limit(5),
+    db.from("transactions").select("id, occurred_at, merchant, amount, currency, kind, category_id").eq("user_id", uid).eq("status", "confirmed").neq("kind", "card_payment").gte("occurred_at", start).lt("occurred_at", end).order("occurred_at", { ascending: false }).limit(5),
+    db.from("transactions").select("base_amount").eq("user_id", uid).eq("status", "confirmed").eq("kind", "card_payment").gte("occurred_at", start).lt("occurred_at", end),
   ]);
+  const cardPaid = (cardPay.data ?? []).reduce((s, r) => s + Number(r.base_amount ?? 0), 0);
 
   const year = ym.slice(0, 4);
   const yearTrips = trips.filter((t) => t.start_date.startsWith(year));
@@ -105,6 +107,13 @@ export default async function Summary({ searchParams }: { searchParams: Promise<
           <div className="t-value">{money(tripYear.personal.total, base)}</div>
           <div className="t-foot">{tripYear.business.total ? `you paid · +${money(tripYear.business.total, base)} business` : `${yearTrips.length} ${yearTrips.length === 1 ? "trip" : "trips"}`}</div>
         </Link>
+        {cardPaid > 0 && (
+          <Link href={`/transactions?m=${ym}&status=cards`} className="tile">
+            <div className="t-label"><IconWallet />Card payments</div>
+            <div className="t-value">{money(cardPaid, base)}</div>
+            <div className="t-foot">{(cardPay.data ?? []).length} paid</div>
+          </Link>
+        )}
         <Link href="/balances" className="tile">
           <div className="t-label"><IconBriefcase />Work claims</div>
           <div className="t-value">{money(claimTotal, base)}</div>

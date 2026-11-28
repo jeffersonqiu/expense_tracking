@@ -27,11 +27,12 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
   const sp = await searchParams;
   const { db, uid, categories, households, projects, trips, pendingCount } = await getContext();
   const { ym, start, end } = monthRange(sp.m);
-  const status = sp.status === "rejected" ? "rejected" : "confirmed";
-  const { data } = await db.from("transactions")
+  const status = sp.status === "rejected" ? "rejected" : sp.status === "cards" ? "cards" : "confirmed";
+  let q = db.from("transactions")
     .select("id, occurred_at, amount, currency, base_amount, base_currency, kind, merchant, category_id, allocation, payment_method")
-    .eq("user_id", uid).eq("status", status).gte("occurred_at", start).lt("occurred_at", end)
-    .order("occurred_at", { ascending: false }).limit(1000);
+    .eq("user_id", uid).eq("status", status === "rejected" ? "rejected" : "confirmed").gte("occurred_at", start).lt("occurred_at", end);
+  q = status === "cards" ? q.eq("kind", "card_payment") : status === "confirmed" ? q.neq("kind", "card_payment") : q;
+  const { data } = await q.order("occurred_at", { ascending: false }).limit(1000);
   const cat = new Map(categories.map((c) => [c.id, c.name]));
 
   const groups = new Map<string, NonNullable<typeof data>>();
@@ -43,7 +44,7 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
   return (
     <Shell active="activity" pending={pendingCount}>
       <Header title="Activity">
-        <MonthStepper ym={ym} path="/transactions" extra={status === "rejected" ? "&status=rejected" : ""} />
+        <MonthStepper ym={ym} path="/transactions" extra={status === "confirmed" ? "" : `&status=${status}`} />
         <a className="btn icon" href={`/api/export?m=${ym}`} aria-label="Export CSV" title="Export CSV"><IconDownload /></a>
       </Header>
       <Flash error={sp.error} ok={sp.ok} />
@@ -57,8 +58,9 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
       </form>
 
       <div style={{ marginBottom: 4 }}>
-        <div className="seg links" style={{ maxWidth: 260 }}>
+        <div className="seg links" style={{ maxWidth: 380 }}>
           <Link href={`/transactions?m=${ym}`} aria-current={status === "confirmed" ? "page" : undefined}>Accepted</Link>
+          <Link href={`/transactions?m=${ym}&status=cards`} aria-current={status === "cards" ? "page" : undefined}>Card payments</Link>
           <Link href={`/transactions?m=${ym}&status=rejected`} aria-current={status === "rejected" ? "page" : undefined}>Rejected</Link>
         </div>
       </div>
@@ -76,7 +78,7 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
                   <div className="main">
                     <div className="title">{t.merchant ?? "—"}</div>
                     <div className="subtitle">
-                      {t.kind !== "spend" && t.kind !== "refund" ? t.kind.charAt(0).toUpperCase() + t.kind.slice(1) : cat.get(t.category_id) ?? "Uncategorised"}
+                      {t.kind === "card_payment" ? t.payment_method ?? "Card payment" : t.kind !== "spend" && t.kind !== "refund" ? t.kind.charAt(0).toUpperCase() + t.kind.slice(1) : cat.get(t.category_id) ?? "Uncategorised"}
                       {ALLOC[t.allocation] ? ` · ${ALLOC[t.allocation]}` : ""}
                       {t.payment_method ? ` · ${t.payment_method}` : ""}
                     </div>

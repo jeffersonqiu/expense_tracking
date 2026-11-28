@@ -225,3 +225,31 @@ export const wisePlainNoDetails: IncomingEmail = {
   messageId: "wise6",
   text: ` Wise.${pad}Hello Alex,\n50,000 IDR is now in Siti Rahma's account.${pad}Thanks,\nThe Wise team`,
 };
+
+// UOB card bill payments and transfers (numbers changed)
+const uobDisclaimer = "\n\nUOB EMAIL DISCLAIMER: Any person receiving this email shall treat this email as confidential.";
+export const uobBillToCard: IncomingEmail = {
+  ...base, messageId: "uobbill1", from: "unialerts@uobgroup.com", subject: "UOB Personal Internet Banking Notification Alerts",
+  date: "2026-11-28T05:13:55Z",
+  text: "You made/scheduled a bill payment(s) of SGD 2377.83 to UOB Cards on your a/c ending 1111 at 1:13PM SGT, 28 Nov 26. Bill ref: ending 2222. If unauthorised, call UOB 24/7 Fraud Hotline." + uobDisclaimer,
+};
+export const uobBillToHsbc: IncomingEmail = { ...uobBillToCard, messageId: "uobbill2", text: uobBillToCard.text.replace("SGD 2377.83 to UOB Cards", "SGD 499.36 to HSBC CC") };
+export const uobBillToUtility: IncomingEmail = { ...uobBillToCard, messageId: "uobbill3", text: uobBillToCard.text.replace("SGD 2377.83 to UOB Cards", "SGD 86.00 to Town Council") };
+export const uobTransferToCiti: IncomingEmail = {
+  ...uobBillToCard, messageId: "uobft1", date: "2026-11-28T05:10:03Z",
+  text: "You made/scheduled a funds transfer(s) of SGD 760.70 to CITIBANK a/c ending 3333 from your a/c ending 1111 at 1:09PM SGT, 28 Nov 26. If unauthorised, call UOB 24/7 Fraud Hotline." + uobDisclaimer,
+};
+export const uobTransferOwn: IncomingEmail = { ...uobTransferToCiti, messageId: "uobft2", text: uobTransferToCiti.text.replace("SGD 760.70 to CITIBANK a/c ending 3333", "SGD 1500.00 to OCBC a/c ending 4444") };
+export const uobFastOk: IncomingEmail = { ...uobTransferToCiti, messageId: "uobft3", subject: "UOB-FAST Funds Transfer Status", text: "UOB-Your FAST funds transfer to New Citi CC on 28-Nov-2026 is successful" + uobDisclaimer };
+
+// Citibank
+export const citiPaymentReceived: IncomingEmail = {
+  ...base, messageId: "citi1", from: "Citibank Singapore <alerts@citibank.com.sg>", subject: "Citi Alerts - Credit Card/Ready Credit Payment Received",
+  date: "2026-11-28T05:10:02Z",
+  text: "Credit Card Payment Received Alert\n\nDear Customer,\nWe would like to inform you that we have received the following Credit payment on your Citi Cash Back+ Card:\n\nCard Number : XXXX-XXXX-XXXX-3333\nTransaction Date : 28/11/2026\nTransaction Amount : SGD 760.70\nRemaining Statement Balance : SGD 0.00\n\nKindly be informed that you still have a minimum payment of SGD 0.00 that is due by 10/12/2026.\n\nThank you for using Citi Alerts.",
+};
+export const citiCharge: IncomingEmail = {
+  ...citiPaymentReceived, messageId: "citi2", subject: "Citi Alerts - Credit Card/Ready Credit Transaction", date: "2026-11-28T06:26:53Z",
+  text: "Dear Customer,\nWe would like to inform you that there is a charge made on your Citi PremierMiles Card:\n\nAccount Number : XXXX-XXXX-XXXX-5555\nTransaction date : 28/11/26\nTransaction time : 14:26:51\nTransaction amount : IDR69000.00\nTransaction details : SALAD BAR JAKARTA IDN\n\nThank you for using Citi Alerts.\n\nCitibank Online",
+};
+export const citiNotice: IncomingEmail = { ...citiPaymentReceived, messageId: "citi3", subject: "Threshold Change Alert", text: "Your alert threshold has been updated." };
