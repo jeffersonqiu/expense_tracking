@@ -27,7 +27,8 @@ const RULES: Array<[RegExp, string]> = [
   [/\b(furnish\w*|furniture|ikea|metal fabri\w*|hardware|renovation|aircon|plumb\w*)\b/, "House"],
   [/\b(uniqlo|h&m|zara|cotton on|tommy|north face|nike|adidas)\b/, "Clothes"],
   [/\b(shopee|lazada|amazon|aliexpress|taobao|qoo10|gain city|courts|harvey norman|best denki|challenger|ishopchangi)\b/, "Shopping"],
-  [/\b(airline|airasia|scoot|singapore airlines|hotel|marriott|hilton|agoda|booking com|klook|trip com)\b/, "Travel"],
+  [/\b(hotel|hotels|marriott|hilton|hyatt|ritz|carlton|shangri ?la|four seasons|mandarin oriental|accor|novotel|ibis|sofitel|pullman|fairmont|swissotel|ihg|intercontinental|holiday inn|crowne plaza|westin|sheraton|st regis|w hotel|aloft|mercure|airbnb|agoda|booking com|hostel|resort|villa|ryokan|capsule)\b/, "Accommodation"],
+  [/\b(airline|airlines|airasia|scoot|singapore airlines|sia|jetstar|cathay pacific|garuda|batik|lion air|emirates|qatar|klook|trip com|traveloka|expedia|changi|airport)\b/, "Travel"],
   [/\b(cinema|golden village|shaw|cathay|steam|playstation|nintendo)\b/, "Entertainment"],
 ];
 

@@ -20,7 +20,7 @@ select is_owner from public.profiles where email = 'owner@example.com' \gset
 \else
   \echo 'FAIL first user should be owner' \q
 \endif
-select count(*) = 15 as ok from public.categories where user_id = '00000000-0000-0000-0000-00000000000a' \gset
+select count(*) = 16 as ok from public.categories where user_id = '00000000-0000-0000-0000-00000000000a' \gset
 \if :ok \else \echo 'FAIL categories not seeded' \q \endif
 
 

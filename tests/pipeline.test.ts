@@ -174,3 +174,12 @@ describe("household utilities", () => {
     expect(out.drafts[0]).toMatchObject({ allocation: "household", householdPot: "bills", categoryName: "Bills" });
   });
 });
+
+describe("accommodation", () => {
+  it("hotels and stays go to Accommodation, flights stay in Travel", () => {
+    expect(keywordCategory("THE RITZ CARLTON JKT O JAKARTA SLT")).toBe("Accommodation");
+    expect(keywordCategory("Marriott Bonvoy")).toBe("Accommodation");
+    expect(keywordCategory("AIRBNB * HM8XYZ")).toBe("Accommodation");
+    expect(keywordCategory("Singapore Airlines")).toBe("Travel");
+  });
+});
