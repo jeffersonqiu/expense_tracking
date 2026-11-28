@@ -1,4 +1,5 @@
 import { saveTransaction } from "./actions";
+import { DateRange } from "./ui/DateRange";
 import { isHouseholdUtility } from "@/lib/pipeline/categorize";
 import { money, sgtDateTime, toLocalInput } from "@/lib/format";
 import { tripDates } from "@/lib/server/trips";
@@ -177,9 +178,8 @@ export function TxnForm({
         </label>
         <div className="when-newtrip" style={{ marginTop: 8 }}>
           <input name="new_trip_name" placeholder="Trip name, e.g. Italy" maxLength={80} aria-label="New trip name" />
-          <div className="fields two" style={{ marginTop: 8 }}>
-            <label className="field"><span>From</span><input name="new_trip_start" type="date" defaultValue={sgtDay(txn?.occurred_at)} /></label>
-            <label className="field"><span>To</span><input name="new_trip_end" type="date" defaultValue={sgtDay(txn?.occurred_at)} /></label>
+          <div style={{ marginTop: 8 }}>
+            <DateRange startName="new_trip_start" endName="new_trip_end" near={sgtDay(txn?.occurred_at)} />
           </div>
         </div>
         <div className="when-trip" style={{ marginTop: 10 }}>

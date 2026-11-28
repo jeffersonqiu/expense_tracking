@@ -556,7 +556,7 @@ export async function saveTrip(fd: FormData) {
   const { db, uid } = await getContext();
   const back_ = str(fd, "return_to") || "/trips";
   const p = TripForm.safeParse(Object.fromEntries(fd));
-  if (!p.success) back(back_, "Please give the trip a name and a start date.");
+  if (!p.success) back(back_, "Please give the trip a name and tap its dates on the calendar.");
   const f = p.data;
   if (f.end_date && f.end_date < f.start_date) back(back_, "The end date is before the start date.");
   const budget = f.budget ? Number(f.budget.replace(/,/g, "")) : null;

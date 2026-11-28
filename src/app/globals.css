@@ -439,3 +439,26 @@ form:has(select[name="trip_id"] option[value="__new"]:checked) .when-newtrip { d
 .fields.two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .fields.two .field { min-width: 0; }
 .fields.two input[type="date"] { min-width: 0; width: 100%; }
+
+/* Date range calendar: first tap From, second tap To */
+.range { background: var(--fill); border-radius: var(--radius-sm); padding: 10px; }
+.range-sum { display: flex; gap: 8px; align-items: stretch; margin-bottom: 6px; }
+.range-sum > div { flex: 1; background: var(--card); border-radius: 8px; padding: 6px 10px; font-size: 15px; font-weight: 500; border: 2px solid transparent; }
+.range-sum > div span { display: block; font-size: 11px; font-weight: 500; color: var(--label-2); text-transform: uppercase; letter-spacing: .02em; }
+.range-sum > div.on { border-color: var(--tint); }
+.range-sum > .range-len { flex: 0 0 auto; background: none; display: flex; align-items: center; color: var(--label-2); font-size: 13px; padding: 0 4px; }
+.range-head { display: flex; align-items: center; justify-content: space-between; padding: 2px 0; }
+.range-head strong { font-size: 15px; }
+.range-head .btn { font-size: 22px; min-width: 40px; }
+.range-grid { display: grid; grid-template-columns: repeat(7, 1fr); row-gap: 2px; }
+.range-wd { text-align: center; font-size: 11px; color: var(--label-3); padding: 4px 0; }
+.range-day { appearance: none; border: 0; background: none; padding: 0; height: 40px; cursor: pointer; color: var(--label); font: inherit; font-size: 15px; display: flex; align-items: center; justify-content: center; }
+.range-day span { width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; border-radius: 50%; }
+.range-day.today span { color: var(--tint); font-weight: 600; }
+.range-day.near span { box-shadow: inset 0 0 0 1.5px var(--label-3); }
+.range-day.in { background: var(--tint-soft); }
+.range-day.start { border-radius: 20px 0 0 20px; }
+.range-day.end { border-radius: 0 20px 20px 0; }
+.range-day.start.end { border-radius: 20px; }
+.range-day.start span, .range-day.end span { background: var(--tint); color: var(--on-tint); font-weight: 600; }
+.range-day:focus-visible span { outline: 2px solid var(--tint); outline-offset: 1px; }

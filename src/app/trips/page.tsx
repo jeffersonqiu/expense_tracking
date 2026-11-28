@@ -6,6 +6,7 @@ import { Shell, Header } from "../ui/Shell";
 import { IconChevronRight, IconPlane, IconPlus } from "../ui/Icons";
 import { Flash } from "../Flash";
 import { saveTrip } from "../actions";
+import { DateRange } from "../ui/DateRange";
 
 export const metadata = { title: "Trips · Expenses" };
 
@@ -75,8 +76,7 @@ export default async function TripsPage({ searchParams }: { searchParams: Promis
         <form action={saveTrip} className="card">
           <div className="fields">
             <label className="field"><span>Name</span><input name="name" required maxLength={80} placeholder="Italy" /></label>
-            <label className="field"><span>From</span><input name="start_date" type="date" required /></label>
-            <label className="field"><span>To</span><input name="end_date" type="date" required /></label>
+            <div className="field"><span>Dates</span><DateRange startName="start_date" endName="end_date" /></div>
             <label className="field"><span>Budget (optional)</span><input name="budget" type="number" inputMode="decimal" min="0" /></label>
           </div>
           <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 12 }}><button className="btn primary">Create trip</button></div>

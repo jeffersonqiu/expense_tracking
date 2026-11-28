@@ -7,6 +7,7 @@ import { Shell, Header } from "../../ui/Shell";
 import { IconChevronLeft, IconChevronRight } from "../../ui/Icons";
 import { Flash } from "../../Flash";
 import { deleteTrip, saveTrip } from "../../actions";
+import { DateRange } from "../../ui/DateRange";
 
 const BUCKETS = [["transport", "Transport"], ["hotels", "Hotels"], ["daily", "Daily"]] as const;
 
@@ -92,8 +93,7 @@ export default async function TripPage({ params, searchParams }: { params: Promi
           <input type="hidden" name="return_to" value={`/trips/${t.id}`} />
           <div className="fields">
             <label className="field"><span>Name</span><input name="name" defaultValue={t.name} required maxLength={80} /></label>
-            <label className="field"><span>From</span><input name="start_date" type="date" defaultValue={t.start_date} required /></label>
-            <label className="field"><span>To</span><input name="end_date" type="date" defaultValue={t.end_date ?? ""} /></label>
+            <div className="field"><span>Dates</span><DateRange startName="start_date" endName="end_date" start={t.start_date} end={t.end_date} /></div>
             <label className="field"><span>Budget</span><input name="budget" type="number" inputMode="decimal" min="0" defaultValue={t.budget ?? ""} /></label>
           </div>
           <div className="fields" style={{ marginTop: 10 }}>
