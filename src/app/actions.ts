@@ -36,31 +36,45 @@ function parseShares(text: string): { person_name: string; amount: number }[] {
     .filter((s) => s.amount > 0);
 }
 
+const ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const optId = z.string().regex(ID).optional().or(z.literal(""));
+
 const TxnForm = z.object({
-  id: z.string().uuid().optional().or(z.literal("")),
-  decision: z.enum(["accept", "reject", "save"]),
+  id: optId,
+  decision: z.enum(["accept", "reject", "save"]).default("accept"),
   occurred_at: z.string(),
-  amount: z.coerce.number().min(0).max(10_000_000),
-  currency: z.string().regex(/^[A-Z]{3}$/),
+  // numeric(14,2) holds up to 999,999,999,999.99 (large IDR/JPY amounts are normal)
+  amount: z.coerce.number().min(0).max(999_999_999_999),
+  currency: z.string().trim().toUpperCase().regex(/^[A-Z]{3}$/),
   kind: z.enum(KINDS),
-  merchant: z.string().max(120),
-  category_id: z.string().uuid().optional().or(z.literal("")),
+  merchant: z.string().trim().transform((v) => v.slice(0, 120)),
+  category_id: optId,
   allocation: z.enum(ALLOCATIONS),
   claim_status: z.enum(CLAIM).optional().or(z.literal("")),
-  household_id: z.string().uuid().optional().or(z.literal("")),
-  description: z.string().max(500).optional(),
+  household_id: optId,
+  description: z.string().transform((v) => v.slice(0, 500)).optional(),
   shares: z.string().max(2000).optional(),
   remember: z.string().optional(),
   auto_accept: z.string().optional(),
   return_to: z.string().optional(),
 });
 
+const FIELD_LABELS: Record<string, string> = {
+  amount: "Amount", currency: "Currency (3 letters, e.g. SGD)", kind: "Type", merchant: "Merchant",
+  category_id: "Category", allocation: "Allocation", claim_status: "Claim status", household_id: "Household",
+  occurred_at: "Date", shares: "Who owes you", id: "Transaction", decision: "Action",
+};
+
 /** Accept / reject / save one transaction (also creates manual ones when id is empty). */
 export async function saveTransaction(fd: FormData) {
   const { db, uid, profile } = await getContext();
   const returnTo = str(fd, "return_to") || "/review";
   const parsed = TxnForm.safeParse(Object.fromEntries(fd));
-  if (!parsed.success) back(returnTo, "Please check the amount, currency (3 letters, e.g. SGD) and other fields.");
+  if (!parsed.success) {
+    const fields = [...new Set(parsed.error.issues.map((i) => FIELD_LABELS[String(i.path[0])] ?? String(i.path[0])))];
+    console.error("saveTransaction validation", parsed.error.issues);
+    back(returnTo, `Please check: ${fields.join(", ")}.`);
+  }
   const f = parsed.data;
   const occurred = fromLocalInput(f.occurred_at);
   if (!occurred) back(returnTo, "Please enter a valid date and time.");

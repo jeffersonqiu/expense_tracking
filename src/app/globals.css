@@ -228,7 +228,7 @@ textarea { resize: vertical; }
 /* Segmented control (radio inputs, no JS) */
 .seg { display: flex; background: var(--fill); border-radius: 10px; padding: 2px; gap: 2px; }
 .seg label { flex: 1; position: relative; cursor: pointer; }
-.seg input { position: absolute; opacity: 0; inset: 0; cursor: pointer; }
+.seg label { -webkit-tap-highlight-color: transparent; user-select: none; -webkit-user-select: none; }
 .seg span { display: block; text-align: center; padding: 6px 8px; border-radius: 8px; font-size: 13px; font-weight: 500; color: var(--label); white-space: nowrap; }
 .seg input:checked + span { background: var(--card); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 0 0 0.5px rgba(0, 0, 0, 0.04); font-weight: 600; }
 .seg input:focus-visible + span { outline: 3px solid var(--tint-soft); }
@@ -240,17 +240,13 @@ textarea { resize: vertical; }
 
 /* Chips (single choice) */
 .chips { display: flex; flex-wrap: wrap; gap: 8px; }
-.chips label { position: relative; cursor: pointer; }
-.chips input { position: absolute; opacity: 0; inset: 0; cursor: pointer; }
+.chips label { position: relative; cursor: pointer; -webkit-tap-highlight-color: transparent; user-select: none; -webkit-user-select: none; }
+/* Visually hidden but focusable; the label takes the tap, so iOS doesn't scroll to a moving input. */
+.chips input, .seg input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; margin: 0; }
 .chips span { display: inline-block; padding: 6px 12px; border-radius: 999px; background: var(--fill); font-size: 14px; font-weight: 500; color: var(--label); }
 .chips input:checked + span { background: var(--tint); color: var(--on-tint); }
 .chips input:focus-visible + span { outline: 3px solid var(--tint-soft); }
 
-@media (max-width: 860px) {
-  .review .chips { flex-wrap: nowrap; overflow-x: auto; margin: 0 -18px; padding: 0 18px 4px; scrollbar-width: none; }
-  .review .chips::-webkit-scrollbar { display: none; }
-  .review .chips label { flex: none; }
-}
 .tags { display: flex; flex-wrap: wrap; gap: 6px; }
 
 /* Month switcher */
@@ -364,3 +360,9 @@ form:has(input[name="allocation"][value="household"]:checked) .when-household { 
 .quickadd select { width: auto; flex: none; }
 .addmore > summary { list-style: none; cursor: pointer; margin: 28px 0 10px; }
 .addmore > summary::-webkit-details-marker { display: none; }
+
+/* Category chips on phones: a tidy 3-column grid instead of a sideways scroller */
+@media (max-width: 860px) {
+  .review .chips { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  .review .chips span { display: block; text-align: center; padding: 9px 4px; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+}
