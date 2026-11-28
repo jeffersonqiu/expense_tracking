@@ -434,3 +434,8 @@ form:has(input[name="allocation"][value="trip"]:checked) .when-trip-alloc,
 form:has(input[name="allocation"][value="work"]:checked) .when-trip-alloc,
 form:has(input[name="allocation"][value="work"]:checked) .when-work-only { display: block; }
 form:has(select[name="trip_id"] option[value="__new"]:checked) .when-newtrip { display: block; }
+.subtitle .warn { color: var(--warn); font-weight: 500; }
+.trip-row .subtitle { white-space: normal; overflow: visible; text-overflow: clip; }
+.fields.two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.fields.two .field { min-width: 0; }
+.fields.two input[type="date"] { min-width: 0; width: 100%; }

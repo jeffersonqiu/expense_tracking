@@ -1,6 +1,7 @@
 import { saveTransaction } from "./actions";
 import { isHouseholdUtility } from "@/lib/pipeline/categorize";
 import { money, sgtDateTime, toLocalInput } from "@/lib/format";
+import { tripDates } from "@/lib/server/trips";
 import { defaultPot, type Category, type Household, type Project, type Trip } from "@/lib/server/context";
 
 export interface TxnRow {
@@ -53,10 +54,17 @@ function Segmented({ name, value, options }: { name: string; value: string; opti
   );
 }
 
-/** Trips closest to the spend's date first (current/upcoming trips are the likely ones). */
+const sgtDay = (iso?: string) => new Date(new Date(iso ?? Date.now()).getTime() + 8 * 3600e3).toISOString().slice(0, 10);
+
+/** Trips covering the spend's date first, then the closest by date (bookings happen before a trip). */
 function tripOptions(trips: Trip[], occurredAt?: string, selected?: string | null): Trip[] {
-  const t = occurredAt ? new Date(occurredAt).getTime() : Date.now();
-  const near = [...trips].sort((a, b) => Math.abs(new Date(a.start_date).getTime() - t) - Math.abs(new Date(b.start_date).getTime() - t)).slice(0, 12);
+  const d = sgtDay(occurredAt);
+  const t = new Date(d).getTime();
+  const gap = (x: Trip) => {
+    const s = new Date(x.start_date).getTime(), e = new Date(x.end_date ?? x.start_date).getTime();
+    return t < s ? s - t : t > e ? t - e : 0;
+  };
+  const near = [...trips].sort((a, b) => gap(a) - gap(b) || a.start_date.localeCompare(b.start_date)).slice(0, 12);
   const sel = selected ? trips.find((x) => x.id === selected) : undefined;
   return sel && !near.includes(sel) ? [sel, ...near] : near;
 }
@@ -162,12 +170,18 @@ export function TxnForm({
           <select name="trip_id" defaultValue={txn?.trip_id ?? ""}>
             <option value="">{trips.length ? "Choose a trip…" : "No trips yet"}</option>
             {tripOptions(trips, txn?.occurred_at, txn?.trip_id).map((t) => (
-              <option key={t.id} value={t.id}>{t.name}</option>
+              <option key={t.id} value={t.id}>{t.name} · {tripDates(t)}</option>
             ))}
             <option value="__new">+ New trip…</option>
           </select>
         </label>
-        <input name="new_trip_name" placeholder="Trip name, e.g. Italy" maxLength={80} className="when-newtrip" style={{ marginTop: 8 }} aria-label="New trip name" />
+        <div className="when-newtrip" style={{ marginTop: 8 }}>
+          <input name="new_trip_name" placeholder="Trip name, e.g. Italy" maxLength={80} aria-label="New trip name" />
+          <div className="fields two" style={{ marginTop: 8 }}>
+            <label className="field"><span>From</span><input name="new_trip_start" type="date" defaultValue={sgtDay(txn?.occurred_at)} /></label>
+            <label className="field"><span>To</span><input name="new_trip_end" type="date" defaultValue={sgtDay(txn?.occurred_at)} /></label>
+          </div>
+        </div>
         <div className="when-trip" style={{ marginTop: 10 }}>
           <Segmented name="trip_bucket" value={txn?.trip_bucket ?? "daily"} options={[
             { value: "daily", label: "Daily" }, { value: "transport", label: "Transport" }, { value: "hotels", label: "Hotels" },

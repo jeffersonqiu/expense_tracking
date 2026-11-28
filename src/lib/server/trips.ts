@@ -54,10 +54,57 @@ export function sumTotals(list: TripTotals[]): TripTotals {
   }), zero());
 }
 
-export function tripDates(t: Trip): string {
-  const f = (d: string, withYear: boolean) => new Intl.DateTimeFormat("en-SG", {
-    day: "numeric", month: "short", ...(withYear ? { year: "numeric" } : {}), timeZone: "UTC",
-  }).format(new Date(d + "T00:00:00Z"));
-  if (!t.end_date) return new Intl.DateTimeFormat("en-SG", { month: "short", year: "numeric", timeZone: "UTC" }).format(new Date(t.start_date + "T00:00:00Z"));
-  return `${f(t.start_date, false)} – ${f(t.end_date, true)}`;
+export function tripDates(t: Pick<Trip, "start_date" | "end_date">): string {
+  const fmt = (d: string, o: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat("en-SG", { ...o, timeZone: "UTC" }).format(new Date(d + "T00:00:00Z"));
+  const s = t.start_date, e = t.end_date;
+  if (!e || e === s) return fmt(s, { day: "numeric", month: "short", year: "numeric" });
+  if (s.slice(0, 7) === e.slice(0, 7)) return `${fmt(s, { day: "numeric" })} – ${fmt(e, { day: "numeric", month: "short", year: "numeric" })}`;
+  if (s.slice(0, 4) === e.slice(0, 4)) return `${fmt(s, { day: "numeric", month: "short" })} – ${fmt(e, { day: "numeric", month: "short", year: "numeric" })}`;
+  return `${fmt(s, { day: "numeric", month: "short", year: "numeric" })} – ${fmt(e, { day: "numeric", month: "short", year: "numeric" })}`;
+}
+
+export type TripPhase = "now" | "upcoming" | "past";
+
+/** Today's date in Singapore, "YYYY-MM-DD". */
+export function sgtToday(): string {
+  return new Date(Date.now() + 8 * 3600e3).toISOString().slice(0, 10);
+}
+
+/** A trip without an end date counts as a single day. */
+export function tripPhase(t: Pick<Trip, "start_date" | "end_date">, today = sgtToday()): TripPhase {
+  const end = t.end_date ?? t.start_date;
+  if (t.start_date > today) return "upcoming";
+  return end >= today ? "now" : "past";
+}
+
+const DAY = 86400e3;
+const day = (d: string) => new Date(d + "T00:00:00Z").getTime();
+
+/** Length in days, counting both ends ("12–24 Dec" = 13 days). */
+export function tripDays(t: Pick<Trip, "start_date" | "end_date">): number | null {
+  return t.end_date ? Math.round((day(t.end_date) - day(t.start_date)) / DAY) + 1 : null;
+}
+
+/** Short status line: "13 days · in 2 weeks", "Day 3 of 8", "5 days". */
+export function tripTiming(t: Pick<Trip, "start_date" | "end_date">, today = sgtToday()): string {
+  const len = tripDays(t);
+  const lenText = len == null ? "end date not set" : `${len} ${len === 1 ? "day" : "days"}`;
+  const phase = tripPhase(t, today);
+  if (phase === "now" && len) return `Day ${Math.round((day(today) - day(t.start_date)) / DAY) + 1} of ${len}`;
+  if (phase === "upcoming") {
+    const n = Math.round((day(t.start_date) - day(today)) / DAY);
+    const when = n === 1 ? "tomorrow" : n < 14 ? `in ${n} days` : n < 60 ? `in ${Math.round(n / 7)} weeks` : `in ${Math.round(n / 30)} months`;
+    return `${lenText} · ${when}`;
+  }
+  return lenText;
+}
+
+/** Now first, then upcoming soonest-first, then past most-recent-first. */
+export function sortTrips<T extends Pick<Trip, "start_date" | "end_date">>(trips: T[], today = sgtToday()): Record<TripPhase, T[]> {
+  const out: Record<TripPhase, T[]> = { now: [], upcoming: [], past: [] };
+  for (const t of trips) out[tripPhase(t, today)].push(t);
+  out.now.sort((a, b) => a.start_date.localeCompare(b.start_date));
+  out.upcoming.sort((a, b) => a.start_date.localeCompare(b.start_date));
+  out.past.sort((a, b) => (b.end_date ?? b.start_date).localeCompare(a.end_date ?? a.start_date));
+  return out;
 }

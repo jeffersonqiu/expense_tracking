@@ -51,6 +51,8 @@ const TxnForm = z.object({
   new_project_name: z.string().trim().max(80).optional(),
   trip_id: z.string().regex(ID).optional().or(z.literal("")).or(z.literal("__new")),
   new_trip_name: z.string().trim().max(80).optional(),
+  new_trip_start: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().or(z.literal("")),
+  new_trip_end: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().or(z.literal("")),
   trip_bucket: z.enum(["daily", "transport", "hotels"]).optional().or(z.literal("")),
   description: z.string().transform((v) => v.slice(0, 500)).optional(),
   return_to: z.string().optional(),
@@ -59,7 +61,7 @@ const TxnForm = z.object({
 const FIELD_LABELS: Record<string, string> = {
   amount: "Amount", currency: "Currency (3 letters, e.g. SGD)", kind: "Type", merchant: "Merchant",
   category_id: "Category", allocation: "Allocation", claim_status: "Claim status", household_id: "Household",
-  household_pot: "Household pot", project_id: "Project", new_project_name: "Project name", trip_id: "Trip", new_trip_name: "Trip name", trip_bucket: "Trip bucket",
+  household_pot: "Household pot", project_id: "Project", new_project_name: "Project name", trip_id: "Trip", new_trip_name: "Trip name", new_trip_start: "Trip start", new_trip_end: "Trip end", trip_bucket: "Trip bucket",
   occurred_at: "Date", id: "Transaction", decision: "Action",
 };
 
@@ -87,7 +89,10 @@ export async function saveTransaction(fd: FormData) {
   let tripId: string | null = null;
   if (allocation === "trip" || allocation === "work") {
     if (f.trip_id === "__new" && f.new_trip_name) {
-      const nt = await db.from("trips").insert({ user_id: uid, name: f.new_trip_name, start_date: occurred.slice(0, 10) }).select("id").single();
+      const start = f.new_trip_start || occurred.slice(0, 10);
+      const end = f.new_trip_end || null;
+      if (end && end < start) back(returnTo, "The trip's end date is before its start date.");
+      const nt = await db.from("trips").insert({ user_id: uid, name: f.new_trip_name, start_date: start, end_date: end }).select("id").single();
       if (nt.error) {
         console.error("create trip", nt.error);
         back(returnTo, nt.error.code === "23505" ? "A trip with that name already starts that day: pick it from the list." : "Couldn't create that trip.");

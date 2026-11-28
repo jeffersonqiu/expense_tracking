@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getContext } from "@/lib/server/context";
-import { tripDates, tripTotals } from "@/lib/server/trips";
+import { tripDates, tripTiming, tripTotals } from "@/lib/server/trips";
 import { money, sgtDate } from "@/lib/format";
 import { Shell, Header } from "../../ui/Shell";
 import { IconChevronLeft, IconChevronRight } from "../../ui/Icons";
@@ -34,7 +34,7 @@ export default async function TripPage({ params, searchParams }: { params: Promi
   return (
     <Shell active="trips" pending={pendingCount}>
       <Link href={`/trips?y=${t.start_date.slice(0, 4)}`} className="btn plain" style={{ marginLeft: -8 }}><IconChevronLeft />Trips</Link>
-      <Header title={t.name} sub={tripDates(t)} />
+      <Header title={t.name} sub={`${tripDates(t)} · ${tripTiming(t)}`} />
       <Flash error={sp.error} ok={sp.ok} />
 
       <section className="hero">
@@ -92,8 +92,8 @@ export default async function TripPage({ params, searchParams }: { params: Promi
           <input type="hidden" name="return_to" value={`/trips/${t.id}`} />
           <div className="fields">
             <label className="field"><span>Name</span><input name="name" defaultValue={t.name} required maxLength={80} /></label>
-            <label className="field"><span>Start</span><input name="start_date" type="date" defaultValue={t.start_date} required /></label>
-            <label className="field"><span>End</span><input name="end_date" type="date" defaultValue={t.end_date ?? ""} /></label>
+            <label className="field"><span>From</span><input name="start_date" type="date" defaultValue={t.start_date} required /></label>
+            <label className="field"><span>To</span><input name="end_date" type="date" defaultValue={t.end_date ?? ""} /></label>
             <label className="field"><span>Budget</span><input name="budget" type="number" inputMode="decimal" min="0" defaultValue={t.budget ?? ""} /></label>
           </div>
           <div className="fields" style={{ marginTop: 10 }}>
