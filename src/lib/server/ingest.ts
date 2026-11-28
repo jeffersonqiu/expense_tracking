@@ -63,7 +63,7 @@ export async function ingestEmail(
     db.from("profiles").select("base_currency").eq("id", userId).single(),
     db.from("households").select("id").eq("owner_id", userId).limit(1),
     db.from("household_members").select("household_id").eq("user_id", userId).limit(1),
-    db.from("trips").select("id, name, start_date, end_date").eq("user_id", userId).order("start_date", { ascending: false }).limit(50),
+    db.from("trips").select("id, name, kind, start_date, end_date").eq("user_id", userId).order("start_date", { ascending: false }).limit(50),
   ]);
   const householdId: string | null = ownHh.data?.[0]?.id ?? memberHh.data?.[0]?.household_id ?? null;
   const categories = catRes.data ?? [];
@@ -74,7 +74,7 @@ export async function ingestEmail(
     categories: categories.map((c) => c.name as string),
     ai,
     hasHousehold: !!householdId,
-    trips: (tripsRes.data ?? []).map((t) => ({ id: t.id as string, name: t.name as string, start: t.start_date as string, end: (t.end_date as string | null) ?? null })),
+    trips: (tripsRes.data ?? []).map((t) => ({ id: t.id as string, name: t.name as string, start: t.start_date as string, end: (t.end_date as string | null) ?? null, kind: (t.kind as "personal" | "business") ?? "personal" })),
     knowledge: knowledge ?? (ai ? await knowledgeFor(db, userId) : async () => ({ facts: [], examples: [] })),
   };
 

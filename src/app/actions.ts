@@ -55,6 +55,7 @@ const TxnForm = z.object({
   trip_id: z.string().regex(ID).optional().or(z.literal("")).or(z.literal("__new")),
   new_trip_name: z.string().trim().max(80).optional(),
   new_trip_start: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().or(z.literal("")),
+  new_trip_kind: z.enum(["personal", "business"]).optional(),
   new_trip_end: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().or(z.literal("")),
   trip_bucket: z.enum(["daily", "transport", "hotels"]).optional().or(z.literal("")),
   description: z.string().transform((v) => v.slice(0, 500)).optional(),
@@ -130,7 +131,8 @@ async function saveTxn(fd: FormData, inline: boolean): Promise<string> {
       const start = f.new_trip_start || occurred.slice(0, 10);
       const end = f.new_trip_end || null;
       if (end && end < start) back(returnTo, "The trip's end date is before its start date.");
-      const nt = await db.from("trips").insert({ user_id: uid, name: f.new_trip_name, start_date: start, end_date: end }).select("id").single();
+      const kind = allocation === "work" ? "business" : f.new_trip_kind ?? "personal";
+      const nt = await db.from("trips").insert({ user_id: uid, name: f.new_trip_name, kind, start_date: start, end_date: end }).select("id").single();
       if (nt.error) {
         console.error("create trip", nt.error);
         back(returnTo, nt.error.code === "23505" ? "A trip with that name already starts that day: pick it from the list." : "Couldn't create that trip.");
@@ -459,7 +461,7 @@ export async function promoteEmail(fd: FormData) {
 /** Fill in categories for pending spends that don't have one yet (memory -> rules -> AI). */
 export async function suggestCategories() {
   const { db, uid, categories, households, trips } = await getContext();
-  const tripOpts = trips.map((t) => ({ id: t.id, name: t.name, start: t.start_date, end: t.end_date }));
+  const tripOpts = trips.map((t) => ({ id: t.id, name: t.name, start: t.start_date, end: t.end_date, kind: t.kind }));
   const { data } = await db.from("transactions")
     .select("id, merchant, merchant_raw, merchant_key, amount, currency, occurred_at, counterparty_type, payment_method, kind, source_emails(body_text)")
     .eq("user_id", uid).eq("status", "pending").is("duplicate_of", null).is("category_id", null)
@@ -590,6 +592,7 @@ const TripForm = z.object({
   name: z.string().trim().min(1).max(80),
   start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().or(z.literal("")),
+  kind: z.enum(["personal", "business"]).default("personal"),
   budget: z.string().optional(),
   links: z.string().max(2000).optional(),
   things_to_bring: z.string().max(4000).optional(),
@@ -605,7 +608,7 @@ export async function saveTrip(fd: FormData) {
   if (f.end_date && f.end_date < f.start_date) back(back_, "The end date is before the start date.");
   const budget = f.budget ? Number(f.budget.replace(/,/g, "")) : null;
   const row = {
-    name: f.name, start_date: f.start_date, end_date: f.end_date || null,
+    name: f.name, kind: f.kind, start_date: f.start_date, end_date: f.end_date || null,
     budget: budget != null && Number.isFinite(budget) && budget >= 0 ? budget : null,
     ...(f.links !== undefined ? { links: f.links || null } : {}),
     ...(f.things_to_bring !== undefined ? { things_to_bring: f.things_to_bring || null } : {}),
@@ -616,7 +619,9 @@ export async function saveTrip(fd: FormData) {
     : await db.from("trips").insert({ ...row, user_id: uid }).select("id").single();
   if (res.error) {
     console.error("saveTrip", res.error);
-    back(back_, res.error.code === "23505" ? "A trip with that name and start date already exists." : "Couldn't save the trip.");
+    back(back_, res.error.code === "23505" ? "A trip with that name and start date already exists."
+      : res.error.message.includes("work spends") ? "This trip has work spends, so it stays a business trip. Move those spends off the trip first."
+      : "Couldn't save the trip.");
   }
   revalidatePath("/", "layout");
   back(`/trips/${res.data.id}`, "Trip saved.", "ok");

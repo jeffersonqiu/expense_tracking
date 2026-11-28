@@ -151,7 +151,7 @@ export class OpenRouterHaiku implements Decider {
       "corrections show what the AI previously got wrong. The same merchant can be filed differently depending on context.",
       `Allocations: ${JSON.stringify(ALLOCATION_GUIDE)}`,
       `Household pots: ${JSON.stringify(POT_GUIDE)}`,
-      `Trip buckets: ${JSON.stringify(BUCKET_GUIDE)}. Trips (by id): ${JSON.stringify((input.trips ?? []).map((t) => ({ id: t.id, name: t.name, from: t.start, to: t.end })))}`,
+      `Trip buckets: ${JSON.stringify(BUCKET_GUIDE)}. Trips (by id): ${JSON.stringify((input.trips ?? []).map((t) => ({ id: t.id, name: t.name, type: t.kind ?? "personal", from: t.start, to: t.end })))}`,
       `<context>\n${JSON.stringify(decisionState(input))}\n</context>`,
     ].join("\n");
     const r = await this.chat("decide", user, schema, 200);

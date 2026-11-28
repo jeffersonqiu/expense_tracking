@@ -8,6 +8,8 @@ import { IconChevronLeft, IconChevronRight } from "../../ui/Icons";
 import { Flash } from "../../Flash";
 import { deleteTrip, saveTrip } from "../../actions";
 import { DateRange } from "../../ui/DateRange";
+import { BucketTable } from "../BucketTable";
+import { Segmented } from "../../ui/Segmented";
 
 const BUCKETS = [["transport", "Transport"], ["hotels", "Hotels"], ["daily", "Daily"]] as const;
 
@@ -35,26 +37,27 @@ export default async function TripPage({ params, searchParams }: { params: Promi
   return (
     <Shell active="trips" pending={pendingCount}>
       <Link href={`/trips?y=${t.start_date.slice(0, 4)}`} className="btn plain" style={{ marginLeft: -8 }}><IconChevronLeft />Trips</Link>
-      <Header title={t.name} sub={`${tripDates(t)} · ${tripTiming(t)}`} />
+      <Header title={t.name} sub={`${t.kind === "business" ? "Business trip" : "Personal trip"} · ${tripDates(t)} · ${tripTiming(t)}`} />
       <Flash error={sp.error} ok={sp.ok} />
 
-      <section className="hero">
-        <div className="h-label">Trip total</div>
-        <div className="h-value">{money(tt.total, base)}</div>
-        {t.budget != null && (
-          <>
-            <div className="bar-track" style={{ margin: "10px 0 6px" }}><div className="bar-fill" style={{ width: `${Math.min(100, (tt.total / Math.max(1, t.budget)) * 100)}%`, background: tt.total > t.budget ? "var(--bad)" : undefined }} /></div>
-            <div className="h-foot">{tt.total > t.budget ? <span className="bad">{money(tt.total - t.budget, base)} over</span> : `${money(t.budget - tt.total, base)} left`} of {money(t.budget, base)} budget</div>
-          </>
-        )}
-      </section>
-      <div className="tiles four">
-        <div className="tile"><div className="t-label">Daily</div><div className="t-value">{money(tt.daily, base)}</div></div>
-        <div className="tile"><div className="t-label">Transport</div><div className="t-value">{money(tt.transport, base)}</div></div>
-        <div className="tile"><div className="t-label">Hotels</div><div className="t-value">{money(tt.hotels, base)}</div></div>
-        <div className="tile"><div className="t-label">{tt.claimable ? "Claimable (work)" : "Not split"}</div>
-          <div className="t-value">{money(tt.claimable || tt.unsplit, base)}</div></div>
+      <div className="tiles two">
+        <section className="tile">
+          <div className="t-label">You paid</div>
+          <div className="t-value">{money(tt.personal.total, base)}</div>
+          {t.budget != null && (
+            <>
+              <div className="bar-track" style={{ margin: "8px 0 4px" }}><div className="bar-fill" style={{ width: `${Math.min(100, (tt.personal.total / Math.max(1, t.budget)) * 100)}%`, background: tt.personal.total > t.budget ? "var(--bad)" : undefined }} /></div>
+              <div className="t-foot">{tt.personal.total > t.budget ? <span className="bad">{money(tt.personal.total - t.budget, base)} over</span> : `${money(t.budget - tt.personal.total, base)} left`} of {money(t.budget, base)}</div>
+            </>
+          )}
+        </section>
+        <section className="tile">
+          <div className="t-label">Business</div>
+          <div className="t-value">{money(tt.business.total, base)}</div>
+          <div className="t-foot">{t.kind === "business" ? "work spends, claimable" : "personal trip: no work spends"}</div>
+        </section>
       </div>
+      <div style={{ marginTop: 12 }}><BucketTable tt={tt} base={base} showBusiness={t.kind === "business"} /></div>
       {(t.baseline_daily + t.baseline_transport + t.baseline_hotels + t.baseline_unsplit) > 0 && (
         <div className="section-foot">Includes starting totals added before tracking{tt.tracked ? `, plus ${tt.tracked} spends tracked here` : ""}.</div>
       )}
@@ -70,7 +73,7 @@ export default async function TripPage({ params, searchParams }: { params: Promi
                 <Link className="row" href={`/transactions/${s.id}`} key={s.id}>
                   <div className="main">
                     <div className="title">{s.merchant ?? "—"}</div>
-                    <div className="subtitle">{sgtDate(s.occurred_at)}{s.allocation === "work" ? " · Work claim" : ""}{s.status === "pending" ? " · waiting for review" : ""}</div>
+                    <div className="subtitle">{sgtDate(s.occurred_at)} · {s.allocation === "work" ? <span className="tint">Business</span> : "Personal"}{s.status === "pending" ? " · waiting for review" : ""}</div>
                   </div>
                   <div className="trail num">
                     <div>{money(s.amount, s.currency)}</div>
@@ -93,6 +96,7 @@ export default async function TripPage({ params, searchParams }: { params: Promi
           <input type="hidden" name="return_to" value={`/trips/${t.id}`} />
           <div className="fields">
             <label className="field"><span>Name</span><input name="name" defaultValue={t.name} required maxLength={80} /></label>
+            <div className="field"><span>Type</span><Segmented name="kind" value={t.kind} options={[{ value: "personal", label: "Personal" }, { value: "business", label: "Business" }]} /></div>
             <div className="field"><span>Dates</span><DateRange startName="start_date" endName="end_date" start={t.start_date} end={t.end_date} /></div>
             <label className="field"><span>Budget</span><input name="budget" type="number" inputMode="decimal" min="0" defaultValue={t.budget ?? ""} /></label>
           </div>

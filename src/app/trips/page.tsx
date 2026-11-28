@@ -7,21 +7,26 @@ import { IconChevronRight, IconPlane, IconPlus } from "../ui/Icons";
 import { Flash } from "../Flash";
 import { saveTrip } from "../actions";
 import { DateRange } from "../ui/DateRange";
+import { BucketTable } from "./BucketTable";
+import { Segmented } from "../ui/Segmented";
 
 export const metadata = { title: "Trips · Expenses" };
 
+const KINDS = [{ value: "personal", label: "Personal" }, { value: "business", label: "Business" }];
+
 function TripRow({ t, tt, base }: { t: Trip; tt: TripTotals; base: string }) {
-  const buckets = ([["Daily", tt.daily], ["Transport", tt.transport], ["Hotels", tt.hotels]] as const)
+  const buckets = ([["Daily", tt.personal.daily], ["Transport", tt.personal.transport], ["Hotels", tt.personal.hotels]] as const)
     .filter(([, v]) => v > 0).map(([k, v]) => `${k} ${money(v, base)}`).join(" · ");
   return (
     <Link className="row indent trip-row" href={`/trips/${t.id}`}>
       <div className="avatar tint"><IconPlane /></div>
       <div className="main">
-        <div className="title">{t.name}</div>
+        <div className="title">{t.name} {t.kind === "business" && <span className="pill biz">Business</span>}</div>
         <div className="subtitle">{tripDates(t)} · {t.end_date ? tripTiming(t) : <span className="warn">add end date</span>}</div>
-        {buckets && <div className="subtitle num">{buckets}</div>}
+        {buckets && <div className="subtitle num">You: {buckets}</div>}
+        {tt.business.total !== 0 && <div className="subtitle num">Business: {money(tt.business.total, base)} claimable</div>}
       </div>
-      <div className="trail num" style={{ fontWeight: 600 }}>{tt.total ? money(tt.total, base) : ""}</div>
+      <div className="trail num" style={{ fontWeight: 600 }}>{tt.personal.total ? money(tt.personal.total, base) : ""}</div>
       <IconChevronRight className="chev" />
     </Link>
   );
@@ -38,7 +43,8 @@ export default async function TripsPage({ searchParams }: { searchParams: Promis
   const year = sp.y && pastYears.includes(sp.y) ? sp.y : thisYear;
   const past = groups.past.filter((t) => (t.end_date ?? t.start_date).startsWith(year));
   const totals = await tripTotals(db, trips);
-  const yearTotal = sumTotals(trips.filter((t) => t.start_date.startsWith(year)).map((t) => totals.get(t.id)!));
+  const yearTrips = trips.filter((t) => t.start_date.startsWith(year));
+  const yearTotal = sumTotals(yearTrips.map((t) => totals.get(t.id)!));
   const section = (title: string, list: Trip[]) => list.length > 0 && (
     <>
       <h2 className="section-title">{title}</h2>
@@ -56,12 +62,13 @@ export default async function TripsPage({ searchParams }: { searchParams: Promis
           {pastYears.slice(0, 4).map((y) => <Link key={y} href={`/trips?y=${y}`} aria-current={y === year ? "page" : undefined}>{y}</Link>)}
         </div>
       )}
-      <div className="tiles four">
-        <div className="tile"><div className="t-label">Daily</div><div className="t-value">{money(yearTotal.daily, base)}</div></div>
-        <div className="tile"><div className="t-label">Transport</div><div className="t-value">{money(yearTotal.transport, base)}</div></div>
-        <div className="tile"><div className="t-label">Hotels</div><div className="t-value">{money(yearTotal.hotels, base)}</div></div>
-        <div className="tile"><div className="t-label">Total {year}</div><div className="t-value">{money(yearTotal.total, base)}</div></div>
+      <div className="tiles two">
+        <div className="tile"><div className="t-label">You paid · {year}</div><div className="t-value">{money(yearTotal.personal.total, base)}</div>
+          <div className="t-foot">{yearTrips.filter((t) => t.kind === "personal").length} personal, {yearTrips.filter((t) => t.kind === "business").length} business {yearTrips.length === 1 ? "trip" : "trips"}</div></div>
+        <div className="tile"><div className="t-label">Business · {year}</div><div className="t-value">{money(yearTotal.business.total, base)}</div>
+          <div className="t-foot">work spends, claimable</div></div>
       </div>
+      <div style={{ marginTop: 12 }}><BucketTable tt={yearTotal} base={base} showBusiness={yearTotal.business.total !== 0 || yearTrips.some((t) => t.kind === "business")} /></div>
       {section("On a trip now", groups.now)}
       {section("Upcoming", groups.upcoming)}
 
@@ -76,6 +83,7 @@ export default async function TripsPage({ searchParams }: { searchParams: Promis
         <form action={saveTrip} className="card">
           <div className="fields">
             <label className="field"><span>Name</span><input name="name" required maxLength={80} placeholder="Italy" /></label>
+            <div className="field"><span>Type</span><Segmented name="kind" value="personal" options={KINDS} /></div>
             <div className="field"><span>Dates</span><DateRange startName="start_date" endName="end_date" /></div>
             <label className="field"><span>Budget (optional)</span><input name="budget" type="number" inputMode="decimal" min="0" /></label>
           </div>

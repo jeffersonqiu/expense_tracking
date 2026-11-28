@@ -109,7 +109,7 @@ export class JevDecider implements Decider {
     const trips = input.trips ?? [];
     if (trips.length) {
       const tripCriteria: Record<string, string> = { none: "Not part of a trip: everyday spending at home." };
-      for (const t of trips) tripCriteria[t.id] = `${t.name} (${t.start} to ${t.end ?? "?"}), including bookings made before it`;
+      for (const t of trips) tripCriteria[t.id] = `${t.name} (${t.kind === "business" ? "business" : "personal"} trip, ${t.start} to ${t.end ?? "?"}), including bookings made before it`;
       questions.trip = {
         type: "choice",
         instructions: "Does this spend belong to one of the user's trips? Spends abroad during a trip's dates, and flight/hotel bookings for its destination, belong to it.",

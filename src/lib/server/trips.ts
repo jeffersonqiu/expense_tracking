@@ -3,54 +3,63 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Trip } from "./context";
 import { myShare, type SummaryRow } from "./summary";
 
+export interface Buckets { daily: number; transport: number; hotels: number; total: number }
+
 export interface TripTotals {
-  daily: number;
-  transport: number;
-  hotels: number;
+  /** What the trip cost you: personal spends (your share) + any starting totals. */
+  personal: Buckets;
+  /** Work spends on the trip: paid for the company, claimable. */
+  business: Buckets;
+  /** Starting total that wasn't split into buckets (counted in personal.total). */
   unsplit: number;
-  total: number;
-  /** Work spends on the trip: claimable, not counted in what the trip cost you. */
-  claimable: number;
   tracked: number; // number of spends tracked in the app
 }
 
-const zero = (): TripTotals => ({ daily: 0, transport: 0, hotels: 0, unsplit: 0, total: 0, claimable: 0, tracked: 0 });
+const b0 = (): Buckets => ({ daily: 0, transport: 0, hotels: 0, total: 0 });
+const zero = (): TripTotals => ({ personal: b0(), business: b0(), unsplit: 0, tracked: 0 });
 
-/** Per-trip totals: imported baselines + accepted spends tagged with the trip. */
+function add(b: Buckets, bucket: string | null, v: number) {
+  if (bucket === "transport") b.transport += v;
+  else if (bucket === "hotels") b.hotels += v;
+  else b.daily += v;
+}
+
+/** Per-trip totals from accepted spends tagged with the trip, split personal vs business. */
 export async function tripTotals(db: SupabaseClient, trips: Trip[]): Promise<Map<string, TripTotals>> {
   const out = new Map<string, TripTotals>();
   for (const t of trips) {
-    out.set(t.id, {
-      ...zero(),
-      daily: t.baseline_daily, transport: t.baseline_transport, hotels: t.baseline_hotels, unsplit: t.baseline_unsplit,
-    });
+    const z = zero();
+    z.personal = { daily: t.baseline_daily, transport: t.baseline_transport, hotels: t.baseline_hotels, total: 0 };
+    z.unsplit = t.baseline_unsplit;
+    out.set(t.id, z);
   }
   if (trips.length) {
     const { data } = await db.from("transactions")
       .select("id, user_id, trip_id, trip_bucket, amount, fx_rate, base_amount, kind, allocation, category_id, household_id, reimbursed_at, shared_shares(amount, settled_at)")
       .in("trip_id", trips.map((t) => t.id)).eq("status", "confirmed");
-    for (const r of (data ?? []) as (SummaryRow & { trip_id: string; trip_bucket: string })[]) {
+    for (const r of (data ?? []) as (SummaryRow & { trip_id: string; trip_bucket: string | null })[]) {
       const tt = out.get(r.trip_id);
       if (!tt) continue;
       tt.tracked++;
-      if (r.allocation === "work") {
-        tt.claimable += Number(r.base_amount ?? 0) * (r.kind === "refund" ? -1 : 1);
-        continue;
-      }
-      const v = myShare(r);
-      if (r.trip_bucket === "transport") tt.transport += v;
-      else if (r.trip_bucket === "hotels") tt.hotels += v;
-      else tt.daily += v;
+      if (r.allocation === "work") add(tt.business, r.trip_bucket, Number(r.base_amount ?? 0) * (r.kind === "refund" ? -1 : 1));
+      else add(tt.personal, r.trip_bucket, myShare(r));
     }
   }
-  for (const tt of out.values()) tt.total = tt.daily + tt.transport + tt.hotels + tt.unsplit;
+  for (const tt of out.values()) {
+    tt.personal.total = tt.personal.daily + tt.personal.transport + tt.personal.hotels + tt.unsplit;
+    tt.business.total = tt.business.daily + tt.business.transport + tt.business.hotels;
+  }
   return out;
 }
 
+const sumB = (a: Buckets, b: Buckets): Buckets => ({
+  daily: a.daily + b.daily, transport: a.transport + b.transport, hotels: a.hotels + b.hotels, total: a.total + b.total,
+});
+
 export function sumTotals(list: TripTotals[]): TripTotals {
   return list.reduce((a, b) => ({
-    daily: a.daily + b.daily, transport: a.transport + b.transport, hotels: a.hotels + b.hotels,
-    unsplit: a.unsplit + b.unsplit, total: a.total + b.total, claimable: a.claimable + b.claimable, tracked: a.tracked + b.tracked,
+    personal: sumB(a.personal, b.personal), business: sumB(a.business, b.business),
+    unsplit: a.unsplit + b.unsplit, tracked: a.tracked + b.tracked,
   }), zero());
 }
 

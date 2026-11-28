@@ -5,7 +5,7 @@ import { userClient } from "../supabase/server";
 export interface Category { id: string; name: string }
 export interface Household { id: string; name: string; owner_id: string; monthly_budget: number; currency: string }
 export interface Trip {
-  id: string; name: string; start_date: string; end_date: string | null; budget: number | null;
+  id: string; name: string; kind: "personal" | "business"; start_date: string; end_date: string | null; budget: number | null;
   links: string | null; things_to_bring: string | null; remarks: string | null;
   baseline_daily: number; baseline_transport: number; baseline_hotels: number; baseline_unsplit: number;
 }

@@ -70,7 +70,7 @@ export interface Knowledge {
 export type TripBucket = "daily" | "transport" | "hotels";
 
 /** A trip the spend might belong to (only nearby / upcoming trips are offered). */
-export interface TripOption { id: string; name: string; start: string; end: string | null }
+export interface TripOption { id: string; name: string; start: string; end: string | null; kind?: "personal" | "business" }
 
 export const BUCKET_GUIDE: Record<TripBucket, string> = {
   daily: "Spending during the trip: food, shopping, local rides, activities.",
@@ -129,7 +129,7 @@ export function decisionState(i: DecisionInput) {
       looks_like_household_utility: i.utilityHint || undefined,
       user_has_household: i.hasHousehold,
     },
-    trips: i.trips?.length ? i.trips.map((t) => ({ name: t.name, from: t.start, to: t.end ?? "?" })) : undefined,
+    trips: i.trips?.length ? i.trips.map((t) => ({ name: t.name, from: t.start, to: t.end ?? "?", type: t.kind ?? "personal" })) : undefined,
     what_we_know_about_this_user: i.knowledge.facts,
     similar_past_decisions: i.knowledge.examples,
   };

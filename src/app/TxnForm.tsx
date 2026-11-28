@@ -1,5 +1,6 @@
 import { saveTransaction } from "./actions";
 import { DateRange } from "./ui/DateRange";
+import { Segmented } from "./ui/Segmented";
 import { isHouseholdUtility } from "@/lib/pipeline/categorize";
 import { money, sgtDateTime, toLocalInput } from "@/lib/format";
 import { tripDates } from "@/lib/server/trips";
@@ -41,19 +42,6 @@ const ALLOCATIONS = [
   { value: "trip", label: "Trip" },
   { value: "household", label: "Household" },
 ];
-
-function Segmented({ name, value, options }: { name: string; value: string; options: { value: string; label: string }[] }) {
-  return (
-    <div className="seg" role="radiogroup">
-      {options.map((o) => (
-        <label key={o.value}>
-          <input type="radio" name={name} value={o.value} defaultChecked={value === o.value} />
-          <span>{o.label}</span>
-        </label>
-      ))}
-    </div>
-  );
-}
 
 const sgtDay = (iso?: string) => new Date(new Date(iso ?? Date.now()).getTime() + 8 * 3600e3).toISOString().slice(0, 10);
 
@@ -171,13 +159,16 @@ export function TxnForm({
           <select name="trip_id" defaultValue={txn?.trip_id ?? ""}>
             <option value="">{trips.length ? "Choose a trip…" : "No trips yet"}</option>
             {tripOptions(trips, txn?.occurred_at, txn?.trip_id).map((t) => (
-              <option key={t.id} value={t.id}>{t.name} · {tripDates(t)}</option>
+              <option key={t.id} value={t.id}>{t.name} · {tripDates(t)}{t.kind === "business" ? " · Business" : ""}</option>
             ))}
             <option value="__new">+ New trip…</option>
           </select>
         </label>
         <div className="when-newtrip" style={{ marginTop: 8 }}>
           <input name="new_trip_name" placeholder="Trip name, e.g. Italy" maxLength={80} aria-label="New trip name" />
+          <div className="when-trip-only" style={{ marginTop: 8 }}>
+            <Segmented name="new_trip_kind" value="personal" options={[{ value: "personal", label: "Personal trip" }, { value: "business", label: "Business trip" }]} />
+          </div>
           <div style={{ marginTop: 8 }}>
             <DateRange startName="new_trip_start" endName="new_trip_end" near={sgtDay(txn?.occurred_at)} />
           </div>
@@ -187,7 +178,7 @@ export function TxnForm({
             { value: "daily", label: "Daily" }, { value: "transport", label: "Transport" }, { value: "hotels", label: "Hotels" },
           ]} />
         </div>
-        <div className="small faint when-work-only" style={{ marginTop: 6 }}>Optional for work: tag a business trip</div>
+        <div className="small faint when-work-only" style={{ marginTop: 6 }}>Optional: tag the business trip. A trip with work spends counts as a business trip.</div>
       </div>
 
       <div className="block">

@@ -93,6 +93,24 @@ update public.transactions set amount = 1 where id = '20000000-0000-0000-0000-00
 reset role;
 select amount = 50 as ok from public.transactions where id = '20000000-0000-0000-0000-000000000001' \gset
 \if :ok \else \echo 'FAIL owner edited wife row amount' \q \endif
+-- A work spend on a trip makes it a business trip; it can't go back to personal while it has work spends.
+insert into public.trips(id, user_id, name, start_date) values ('30000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-00000000000a', 'Jakarta', '2026-11-26');
+update public.transactions set allocation = 'work', claim_status = 'to_claim', trip_id = '30000000-0000-0000-0000-000000000002', trip_bucket = 'daily', status = 'pending'
+ where id = '20000000-0000-0000-0000-000000000002';
+select kind = 'personal' as ok from public.trips where id = '30000000-0000-0000-0000-000000000002' \gset
+\if :ok \else \echo 'FAIL a pending work suggestion changed the trip type' \q \endif
+update public.transactions set status = 'confirmed' where id = '20000000-0000-0000-0000-000000000002';
+select kind = 'business' as ok from public.trips where id = '30000000-0000-0000-0000-000000000002' \gset
+\if :ok \else \echo 'FAIL work spend did not make the trip business' \q \endif
+do $$ begin
+  update public.trips set kind = 'personal' where id = '30000000-0000-0000-0000-000000000002';
+  raise exception 'downgraded a trip with work spends';
+exception when raise_exception then
+  if sqlerrm not like '%work spends%' then raise; end if;
+end $$;
+update public.transactions set allocation = 'personal', claim_status = null, trip_id = null, trip_bucket = null
+ where id = '20000000-0000-0000-0000-000000000002';
+
 -- Trip allocation needs a trip; deleting a trip keeps its spends as personal.
 do $$ begin
   update public.transactions set allocation = 'trip' where id = '20000000-0000-0000-0000-000000000002';

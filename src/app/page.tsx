@@ -90,8 +90,8 @@ export default async function Summary({ searchParams }: { searchParams: Promise<
         )}
         <Link href={`/trips?y=${year}`} className="tile">
           <div className="t-label"><IconPlane />Trips {year}</div>
-          <div className="t-value">{money(tripYear.total, base)}</div>
-          <div className="t-foot">{yearTrips.length} {yearTrips.length === 1 ? "trip" : "trips"}, tracked separately</div>
+          <div className="t-value">{money(tripYear.personal.total, base)}</div>
+          <div className="t-foot">{tripYear.business.total ? `you paid · +${money(tripYear.business.total, base)} business` : `${yearTrips.length} ${yearTrips.length === 1 ? "trip" : "trips"}, tracked separately`}</div>
         </Link>
         <Link href="/balances" className="tile">
           <div className="t-label"><IconBriefcase />Work claims</div>

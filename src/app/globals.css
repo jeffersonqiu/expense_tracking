@@ -477,3 +477,15 @@ form:has(select[name="trip_id"] option[value="__new"]:checked) .when-newtrip { d
 @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
 @media (min-width: 861px) { .sheet-backdrop { align-items: center; } .sheet { border-radius: 16px; } }
 @media (hover: hover) and (pointer: fine) { .swipe-tip-inline { visibility: hidden; } }
+
+/* Trips: personal vs business */
+.buckets { width: 100%; border-collapse: collapse; font-size: 15px; }
+.buckets th, .buckets td { padding: 11px 16px; text-align: right; border-bottom: 0.5px solid var(--sep); }
+.buckets th:first-child { text-align: left; font-weight: 400; color: var(--label-2); }
+.buckets thead th { font-size: 12px; font-weight: 600; color: var(--label-2); text-transform: uppercase; letter-spacing: .02em; padding-top: 12px; padding-bottom: 8px; }
+.buckets tfoot th, .buckets tfoot td { font-weight: 600; color: var(--label); border-bottom: 0; }
+.pill.biz { background: var(--tint-soft); color: var(--tint); }
+.tiles.two { grid-template-columns: 1fr 1fr; }
+.subtitle .tint { color: var(--tint); }
+.when-trip-only { display: none; }
+form:has(input[name="allocation"][value="trip"]:checked) .when-trip-only { display: block; }
