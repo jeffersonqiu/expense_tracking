@@ -10,6 +10,8 @@ import { fxRate, toBase } from "@/lib/server/fx";
 import { newIngestKey } from "@/lib/server/security";
 import { fromLocalInput } from "@/lib/format";
 import { keywordCategory, merchantKey, displayMerchant } from "@/lib/pipeline/categorize";
+import { sgtWhen } from "@/lib/pipeline/process";
+import { makeDecider } from "@/lib/server/ingest";
 
 const KINDS = ["spend", "refund", "investment", "transfer", "income"] as const;
 const ALLOCATIONS = ["personal", "work", "shared", "household"] as const;
@@ -347,4 +349,61 @@ export async function promoteEmail(fd: FormData) {
   }).select("id").single();
   if (tx.error) back("/missed", "A draft for this email already exists, or it could not be created.");
   redirect(`/transactions/${tx.data.id}`);
+}
+
+/** Fill in categories for pending spends that don't have one yet (memory -> rules -> AI). */
+export async function suggestCategories() {
+  const { db, uid, categories } = await getContext();
+  const { data } = await db.from("transactions")
+    .select("id, merchant, merchant_raw, merchant_key, amount, currency, occurred_at, counterparty_type, payment_method, kind, source_emails(body_text)")
+    .eq("user_id", uid).eq("status", "pending").is("duplicate_of", null).is("category_id", null)
+    .neq("kind", "transfer").order("occurred_at").limit(20);
+  const rows = data ?? [];
+  if (rows.length === 0) back("/review", "Every waiting spend already has a category.", "ok");
+
+  const byName = new Map(categories.map((c) => [c.name, c.id]));
+  const ai = await makeDecider(adminClient(), uid).catch(() => null);
+  let filled = 0;
+  let aiFailed = false;
+
+  const one = async (t: (typeof rows)[number]) => {
+    const raw = t.merchant_raw ?? t.merchant ?? "";
+    const key = t.merchant_key ?? merchantKey(raw);
+    let name: string | null = null;
+    let classifier = "rules";
+    let confidence = 0.8;
+
+    const rule = await db.from("merchant_rules").select("category_id").eq("user_id", uid).eq("merchant_key", key).maybeSingle();
+    if (rule.data?.category_id) {
+      await db.from("transactions").update({ category_id: rule.data.category_id, classifier: "memory", confidence: 0.95 }).eq("id", t.id).eq("user_id", uid);
+      filled++;
+      return;
+    }
+    name = keywordCategory(raw);
+    if (!name && ai) {
+      try {
+        const email = t.source_emails as unknown as { body_text: string } | null;
+        const pick = await ai.pickCategory({
+          merchant: raw, amount: Number(t.amount), currency: t.currency, snippet: email?.body_text?.slice(0, 1500) ?? "",
+          counterparty: t.counterparty_type ?? undefined, when: sgtWhen(t.occurred_at), paymentMethod: t.payment_method ?? undefined,
+        }, categories.map((c) => c.name));
+        name = pick.category;
+        classifier = ai.name;
+        confidence = pick.confidence;
+      } catch (err) {
+        console.error("suggestCategories AI", err);
+        aiFailed = true;
+      }
+    }
+    const id = name ? byName.get(name) : undefined;
+    if (id) {
+      await db.from("transactions").update({ category_id: id, classifier, confidence }).eq("id", t.id).eq("user_id", uid);
+      filled++;
+    }
+  };
+
+  for (let i = 0; i < rows.length; i += 5) await Promise.all(rows.slice(i, i + 5).map(one));
+  revalidatePath("/review");
+  const note = !ai ? " AI is off: check Settings → AI and cost." : aiFailed ? " Some AI calls failed or hit the monthly cap." : "";
+  back("/review", `Suggested categories for ${filled} of ${rows.length} spends.${note}`, filled ? "ok" : "error");
 }

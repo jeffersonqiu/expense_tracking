@@ -11,7 +11,8 @@
  *   3. Run `install` once and approve the permissions
  */
 
-var SCRIPT_VERSION = '1.0.0';
+var SCRIPT_VERSION = '1.1.0';
+var LABEL_NAME = 'Expense Tracker';   // Gmail label for emails identified as spending
 var BATCH_SIZE = 10;               // emails per request (keeps each request well under Vercel's 60 s limit)
 var MAX_RUN_MS = 4.5 * 60 * 1000;  // stay under Apps Script's 6-minute limit
 var OVERLAP_SEC = 15 * 60;         // re-check the last 15 min each run (server ignores repeats)
@@ -141,12 +142,58 @@ function flush_(batch, scanned) {
   if (!res) return { ok: false, maxDate: 0 };
   var accepted = {};
   (res.accepted || []).forEach(function (id) { accepted[id] = true; });
+  labelTransactions_(batch, res.results || []);
   var maxDate = 0;
   for (var i = 0; i < batch.length; i++) {
     if (!accepted[batch[i].messageId]) return { ok: false, maxDate: maxDate }; // retry next run
     maxDate = Math.max(maxDate, Math.floor(new Date(batch[i].date).getTime() / 1000));
   }
   return { ok: true, maxDate: maxDate };
+}
+
+/** Adds the "Expense Tracker" label to threads the app identified as spending. */
+function labelTransactions_(batch, results) {
+  var isTx = {};
+  results.forEach(function (r) { if (r.status === 'transaction') isTx[r.messageId] = true; });
+  var done = {};
+  batch.forEach(function (e) {
+    if (!isTx[e.messageId] || done[e.threadId]) return;
+    done[e.threadId] = true;
+    try { GmailApp.getThreadById(e.threadId).addLabel(label_()); } catch (err) { console.warn('label failed: ' + err); }
+  });
+}
+
+function label_() {
+  return GmailApp.getUserLabelByName(LABEL_NAME) || GmailApp.createLabel(LABEL_NAME);
+}
+
+/**
+ * Run once after updating the script: labels emails the app already identified
+ * as spending. If it stops because of the time limit, run it again to continue.
+ */
+function labelPast() {
+  var cfg = props_();
+  var url = cfg.url.replace(/\/api\/ingest\/?$/, '/api/ingest/labels');
+  var p = PropertiesService.getScriptProperties();
+  var offset = Number(p.getProperty('LABEL_OFFSET') || 0);
+  var started = Date.now();
+  var label = label_();
+  var count = 0;
+  while (offset !== null && Date.now() - started < MAX_RUN_MS) {
+    var resp = UrlFetchApp.fetch(url, {
+      method: 'post', contentType: 'application/json', muteHttpExceptions: true,
+      headers: { Authorization: 'Bearer ' + cfg.key }, payload: JSON.stringify({ offset: offset }),
+    });
+    if (resp.getResponseCode() !== 200) throw new Error('Expense Tracker returned ' + resp.getResponseCode());
+    var body = JSON.parse(resp.getContentText());
+    for (var i = 0; i < body.threads.length; i++) {
+      if (Date.now() - started > MAX_RUN_MS) break;
+      try { GmailApp.getThreadById(body.threads[i]).addLabel(label); count++; } catch (err) { /* thread deleted */ }
+    }
+    offset = body.next;
+    p.setProperty('LABEL_OFFSET', String(offset === null ? 0 : offset));
+  }
+  console.log(offset === null ? 'Done: labelled ' + count + ' threads.' : 'Labelled ' + count + ' threads so far. Run labelPast again to continue.');
 }
 
 function post_(payload) {

@@ -38,6 +38,11 @@ export interface ProcessOutcome {
   drafts: Draft[];
 }
 
+/** "Sat 12:29" in Singapore time: helps guess meals vs. other spends. */
+export function sgtWhen(iso: string): string {
+  return new Intl.DateTimeFormat("en-SG", { timeZone: "Asia/Singapore", weekday: "short", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(iso));
+}
+
 /** Turn one email into zero or more pending drafts. Pure apart from injected lookups/AI. */
 export async function processEmail(email: IncomingEmail, ctx: ProcessContext): Promise<ProcessOutcome> {
   const parsed = runParsers(email);
@@ -98,9 +103,12 @@ export async function processEmail(email: IncomingEmail, ctx: ProcessContext): P
         categoryName = kw;
         catConfidence = t.categoryHint ? 0.95 : 0.8;
         catClassifier = "rules";
-      } else if (ctx.ai && t.counterpartyType !== "individual") {
+      } else if (ctx.ai && t.kind !== "transfer") {
         const pick = await ctx.ai.pickCategory(
-          { merchant: t.merchantRaw, amount: t.amount, currency: t.currency, snippet: email.text.slice(0, 1500) },
+          {
+            merchant: t.merchantRaw, amount: t.amount, currency: t.currency, snippet: email.text.slice(0, 1500),
+            counterparty: t.counterpartyType, when: sgtWhen(t.occurredAt), paymentMethod: t.paymentMethod,
+          },
           ctx.categories,
         );
         if (pick.category && ctx.categories.includes(pick.category)) {

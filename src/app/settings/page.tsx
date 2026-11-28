@@ -9,6 +9,8 @@ import { CreateKey } from "./CreateKey";
 
 export const metadata = { title: "Settings · Expenses" };
 
+const LATEST_SCRIPT = "1.1.0";
+
 function ago(iso: string) {
   const mins = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
   if (mins < 1) return "just now";
@@ -62,6 +64,11 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
           {connected && <span className="pill good">Active</span>}
         </div>
         {hb.data?.last_error && <div className="row"><div className="main small bad">Last error: {hb.data.last_error}</div></div>}
+        {hb.data && (hb.data.script_version ?? "0") < LATEST_SCRIPT && (
+          <div className="row"><div className="main small">
+            <span className="pill warn">Update available</span> Script v{LATEST_SCRIPT} adds the &ldquo;Expense Tracker&rdquo; Gmail label. Paste the new apps-script/Code.gs, save, then run <strong>labelPast</strong> once.
+          </div></div>
+        )}
         {activeKeys.map((k) => (
           <div className="row" key={k.id}>
             <div className="main">
@@ -126,6 +133,20 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
       {/* AI */}
       <div className="section-label">AI and cost</div>
       <div className="list">
+        <div className="row">
+          <div className="main">
+            <div className="title" style={{ fontWeight: 400 }}>AI status</div>
+            <div className="subtitle">
+              {!process.env.OPENROUTER_API_KEY ? "Not connected: add OPENROUTER_API_KEY in Vercel, then redeploy"
+                : !settings.data?.ai_enabled ? "Turned off below"
+                : spent >= cap ? "Paused: monthly cap reached"
+                : `On · ${process.env.AI_DECIDER === "haiku" ? "Claude Haiku 5.5" : "Jev decides, Claude Haiku 5.5 reads amounts"}`}
+            </div>
+          </div>
+          <span className={`pill ${process.env.OPENROUTER_API_KEY && settings.data?.ai_enabled && spent < cap ? "good" : "warn"}`}>
+            {process.env.OPENROUTER_API_KEY && settings.data?.ai_enabled && spent < cap ? "Active" : "Off"}
+          </span>
+        </div>
         <div className="row bars" style={{ flexWrap: "wrap" }}>
           <div className="main"><div className="title" style={{ fontWeight: 400 }}>This month</div></div>
           <div className="trail num"><strong>{money(spent, "USD")}</strong> <span className="muted">of {money(cap, "USD")}</span></div>

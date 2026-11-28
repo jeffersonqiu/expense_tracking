@@ -33,6 +33,16 @@ to the web app. The web app never gets access to your inbox.
 6. The execution log should finish without errors. In the app, **Settings →
    Gmail connector** now shows "Last seen: just now".
 
+## Gmail label
+From script v1.1.0, every email the app identifies as spending gets the Gmail
+label **Expense Tracker**, so you can open that label in Gmail to see them all.
+After updating the script, run **`labelPast`** once to label emails the app
+already imported (if it says "Run labelPast again", run it again).
+
+## Update the script
+Open the project at script.google.com, replace all of `Code.gs` with the new
+version, **Save**. Your script properties and timer stay as they are.
+
 ## Import past emails (optional)
 In the editor, replace the function dropdown's choice with a one-off call:
 open `Code.gs`, add at the bottom

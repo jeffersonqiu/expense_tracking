@@ -47,6 +47,15 @@ function Segmented({ name, value, options }: { name: string; value: string; opti
   );
 }
 
+function suggestionSource(classifier: string | null, confidence: number | null): string {
+  if (classifier === "memory") return "From your past choice";
+  if (classifier === "rules") return "Suggested by keyword";
+  if (classifier === "jev" || classifier === "haiku") {
+    return `Suggested by ${classifier === "jev" ? "Jev" : "AI"}${confidence != null ? ` · ${confidence}%` : ""}`;
+  }
+  return "Suggested";
+}
+
 /** One captured spend: review card, edit form, or manual entry. */
 export function TxnForm({
   txn, categories, households, returnTo, mode,
@@ -114,7 +123,10 @@ export function TxnForm({
       </div>
 
       <div className="block">
-        <div className="lbl">Category</div>
+        <div className="lbl" style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+          <span>Category</span>
+          {mode === "review" && txn?.category_id && <span className="faint">{suggestionSource(txn.classifier, confidence)}</span>}
+        </div>
         <div className="chips">
           {categories.map((c) => (
             <label key={c.id}>

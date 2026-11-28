@@ -1,5 +1,5 @@
 import type { IncomingEmail, Kind } from "../pipeline/types";
-import type { CostSink, Decider, Extracted } from "./types";
+import type { CategoryInput, CostSink, Decider, Extracted } from "./types";
 
 /**
  * Jev (TypeSafe System One decision model) via OpenRouter's Decisions API.
@@ -91,14 +91,22 @@ export class JevDecider implements Decider {
     return { isTransaction: true, confidence: p, kind, ...fields };
   }
 
-  async pickCategory(input: { merchant: string; amount: number; currency: string; snippet: string }, categories: string[]) {
+  async pickCategory(input: CategoryInput, categories: string[]) {
     if (categories.length === 0) return { category: null, confidence: 0 };
     const criteria: Record<string, string> = {};
     for (const c of categories) criteria[c] = c;
     const a = await this.decide(
       "pick_category",
-      { country: "Singapore", merchant: input.merchant, amount: `${input.currency} ${input.amount}`, email_excerpt: input.snippet.slice(0, 1500) },
-      { category: { type: "choice", instructions: "Which spending category best fits this purchase?", criteria } },
+      {
+        country: "Singapore",
+        merchant: input.merchant,
+        paid_to: input.counterparty === "individual" ? "a person (PayNow / phone number), often a hawker, driver or small shop" : "a business",
+        amount: `${input.currency} ${input.amount}`,
+        local_time: input.when,
+        payment_method: input.paymentMethod,
+        email_excerpt: input.snippet.slice(0, 1500),
+      },
+      { category: { type: "choice", instructions: "Which spending category best fits this payment? Small payments to a person around meal times are usually Food.", criteria } },
     );
     const ans = a.category;
     if (!ans || ans.type !== "choice") return { category: null, confidence: 0 };

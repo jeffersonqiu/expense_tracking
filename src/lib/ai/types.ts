@@ -27,7 +27,19 @@ export interface Decider {
   /** Unknown sender: is it a purchase, and if so the fields. */
   extract(email: IncomingEmail): Promise<Extracted>;
   /** Pick one category name from the user's list. */
-  pickCategory(input: { merchant: string; amount: number; currency: string; snippet: string }, categories: string[]): Promise<{ category: string | null; confidence: number }>;
+  pickCategory(input: CategoryInput, categories: string[]): Promise<{ category: string | null; confidence: number }>;
 }
 
 export type CostSink = (c: AiCallCost) => void | Promise<void>;
+
+export interface CategoryInput {
+  merchant: string;
+  amount: number;
+  currency: string;
+  snippet: string;
+  /** "business" | "individual" | "unknown" */
+  counterparty?: string;
+  /** Local (Singapore) time, e.g. "Sat 12:29" */
+  when?: string;
+  paymentMethod?: string;
+}

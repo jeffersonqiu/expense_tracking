@@ -18,9 +18,9 @@ export function displayMerchant(raw: string): string {
 
 const RULES: Array<[RegExp, string]> = [
   [/coinhako|crypto|btc/, "Invest"],
-  [/\b(grab \(ride\)|tada|gojek|comfort|cdg|zig|taxi|ez ?link|simplygo|transitlink|mrt)\b/, "Transport"],
+  [/\b(grab \(ride\)|tada|gojek|ryde|comfort|cdg|zig|taxi|ez ?link|simplygo|transitlink|mrt|smrt|sbs|lta|bus|train|kcic|whoosh|ktm|mtr|parking|carpark|petrol|shell|esso|caltex|spc)\b/, "Transport"],
   [/\b(fairprice|ntuc|sheng siong|cold storage|giant|don don donki|redmart|prime supermarket|hao mart)\b/, "Groceries"],
-  [/\b(kitchen|cafe|caf|coffee|kopi|restaurant|food|eat|eating|bistro|bakery|bak kut|chicken rice|noodle|western|thai|japanese|korean|ramen|sushi|hawker|canteen|dining|toast|mcdonald|kfc|subway|starbucks|grabfood|foodpanda|deliveroo|baan ?thai|jp kr)\b/, "Food"],
+  [/\b(kitchen|cafe|caf|coffee|kopi|teh|restaurant|food|foods|eat|eatery|eating|bistro|bakery|bak kut|chicken|rice|noodle|noodles|mee|western|thai|japanese|korean|chinese|indian|ramen|sushi|hawker|canteen|kopitiam|dining|toast|bar|grill|pizza|burger|mala|hotpot|dim sum|dumpling|bubble tea|boba|mcdonald|kfc|subway|starbucks|ya kun|toast box|old chang kee|grabfood|foodpanda|deliveroo|baan ?thai|jp kr)\b/, "Food"],
   [/\b(simba|singtel|starhub|m1|circles|sp services|sp group|town council|insurance)\b/, "Bills"],
   [/\b(netflix|spotify|youtube|disney|apple com|icloud|google one|grok|xai|x subscription|openai|chatgpt|anthropic|claude|notion|adobe|microsoft)\b/, "Subscription"],
   [/\b(guardian|watsons|clinic|pharmacy|polyclinic|dental|medical|hospital|unity)\b/, "Health"],

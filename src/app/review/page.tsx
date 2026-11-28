@@ -1,8 +1,11 @@
 import { getContext } from "@/lib/server/context";
 import { Shell, Header } from "../ui/Shell";
-import { IconCheckCircle } from "../ui/Icons";
+import { IconCheckCircle, IconSparkle } from "../ui/Icons";
 import { TxnForm, type TxnRow } from "../TxnForm";
 import { Flash } from "../Flash";
+import { suggestCategories } from "../actions";
+
+export const maxDuration = 60;
 
 export const metadata = { title: "Review · Expenses" };
 
@@ -17,7 +20,11 @@ export default async function ReviewPage({ searchParams }: { searchParams: Promi
   const rows = (data ?? []) as TxnRow[];
   return (
     <Shell active="review" pending={pendingCount}>
-      <Header title="Review" sub={pendingCount > 0 ? `${pendingCount} to go · oldest first` : undefined} />
+      <Header title="Review" sub={pendingCount > 0 ? `${pendingCount} to go · oldest first` : undefined}>
+        {rows.some((r) => !r.category_id && r.kind !== "transfer") && (
+          <form action={suggestCategories}><button className="btn"><IconSparkle />Suggest categories</button></form>
+        )}
+      </Header>
       <Flash error={flash.error} ok={flash.ok} />
       {rows.length === 0 ? (
         <div className="empty-state">

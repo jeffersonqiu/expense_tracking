@@ -1,5 +1,5 @@
 import type { IncomingEmail } from "../pipeline/types";
-import type { CostSink, Decider, Extracted } from "./types";
+import type { CategoryInput, CostSink, Decider, Extracted } from "./types";
 
 const ENDPOINT = "https://openrouter.ai/api/v1/chat/completions";
 
@@ -95,7 +95,7 @@ export class OpenRouterHaiku implements Decider {
     }
   }
 
-  async pickCategory(input: { merchant: string; amount: number; currency: string; snippet: string }, categories: string[]) {
+  async pickCategory(input: CategoryInput, categories: string[]) {
     const schema = {
       type: "object",
       additionalProperties: false,
@@ -105,7 +105,15 @@ export class OpenRouterHaiku implements Decider {
         confidence: { type: "number", minimum: 0, maximum: 1 },
       },
     };
-    const user = `Pick the best spending category for this Singapore transaction.\nMerchant: ${input.merchant}\nAmount: ${input.currency} ${input.amount}\n<email_excerpt>\n${input.snippet}\n</email_excerpt>`;
+    const user = [
+      "Pick the best spending category for this Singapore transaction.",
+      `Merchant: ${input.merchant}`,
+      `Paid to: ${input.counterparty === "individual" ? "a person (PayNow/phone), often a hawker, driver or small shop" : "a business"}`,
+      `Amount: ${input.currency} ${input.amount}`,
+      input.when ? `Local time: ${input.when}` : "",
+      input.paymentMethod ? `Payment method: ${input.paymentMethod}` : "",
+      `<email_excerpt>\n${input.snippet}\n</email_excerpt>`,
+    ].filter(Boolean).join("\n");
     const r = await this.chat("pick_category", user, schema, 100);
     try {
       const j = JSON.parse(r.content) as { category: string; confidence: number };
