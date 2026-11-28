@@ -316,12 +316,14 @@ export const wise: Parser = {
     return ok("wise", [{
       ...mo,
       occurredAt: e.date,
-      // To your own account: money moved, not spent (change it on the card if it was for someone).
-      kind: recipient ? "spend" : "transfer",
+      // To your own account (e.g. an IDR account used for family): a spend to review like any other;
+      // the AI learns what these are for, and you reject the ones that only move money.
+      kind: "spend",
       merchantRaw: recipient ? `Wise to ${recipient}` : "Wise to own account",
       counterpartyType: recipient ? (org ? "business" : "individual") : "unknown",
       paymentMethod: "Wise",
-      role: "rail",
+      // A receipt: the bank PayNow/card leg that funded it (same amount) is the same money.
+      role: "receipt",
       description: `Received ${received}${no ? ` · Wise #${no}` : ""}`,
     }]);
   },

@@ -497,3 +497,7 @@ form:has(input[name="allocation"][value="giving"]:checked) .when-giving { displa
 @media (max-width: 480px) {
   .seg-five .seg label span { font-size: 13px; padding-left: 2px; padding-right: 2px; letter-spacing: -0.01em; }
 }
+/* Giving has its own branches instead of a category */
+form:has(input[name="allocation"][value="giving"]:checked) .when-not-giving { display: none; }
+.hint-household { display: none; }
+form:has(input[name="allocation"][value="household"]:checked) .hint-household { display: block; }

@@ -168,7 +168,7 @@ export async function processEmail(email: IncomingEmail, ctx: ProcessContext): P
       ...t,
       merchant: displayMerchant(t.merchantRaw),
       merchantKey: key,
-      categoryName: suggestion.category,
+      categoryName: suggestion.allocation === "giving" ? "Giving" : suggestion.category,
       allocation: suggestion.trip && (suggestion.allocation === "personal" || !suggestion.allocation) ? "trip" : suggestion.allocation,
       householdPot: suggestion.allocation === "household" ? suggestion.pot : null,
       givingKind: suggestion.allocation === "giving" ? suggestion.pot ?? "adhoc" : null,

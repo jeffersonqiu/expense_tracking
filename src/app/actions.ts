@@ -168,10 +168,12 @@ async function saveTxn(fd: FormData, inline: boolean): Promise<string> {
     fx_rate: rate,
     base_currency: base,
     base_amount: toBase(f.amount, rate),
-    kind: f.kind,
+    // Giving money away is spending, even when the email showed it as a transfer (e.g. Wise to your own account for your parents).
+    kind: allocation === "giving" && f.kind === "transfer" ? "spend" : f.kind,
     merchant: f.merchant ? displayMerchant(f.merchant) : null,
     merchant_key: key,
-    category_id: f.category_id || null,
+    // Giving is filed by branch, not category: keep the category as Giving for reports.
+    category_id: allocation === "giving" ? categories.find((c) => c.name === "Giving")?.id ?? null : f.category_id || null,
     allocation,
     claim_status: allocation === "work" ? f.claim_status || "to_claim" : null,
     household_id: allocation === "household" ? f.household_id || null : null,
@@ -224,7 +226,7 @@ async function saveTxn(fd: FormData, inline: boolean): Promise<string> {
       category: catName(before.category_id), allocation: before.allocation, pot: before.household_pot,
       confidence: { category: Number(before.confidence ?? 0) }, source: before.classifier ?? "unknown",
     } : {});
-    const finalCategory = catName(f.category_id || null);
+    const finalCategory = allocation === "giving" ? "Giving" : catName(f.category_id || null);
     const finalAllocation = allocation;
     const finalPot = pot ?? givingKind; // household pot, or the giving branch
     const email = before?.source_emails as unknown as { body_text?: string } | null;
@@ -247,7 +249,7 @@ async function saveTxn(fd: FormData, inline: boolean): Promise<string> {
       final_allocation: finalAllocation,
       final_pot: finalPot,
       final_project: projectId ? projects.find((p) => p.id === projectId)?.name ?? f.new_project_name ?? null : null,
-      corrected_category: !!f.id && f.decision !== "reject" && (suggested.category ?? null) !== finalCategory,
+      corrected_category: !!f.id && f.decision !== "reject" && allocation !== "giving" && (suggested.category ?? null) !== finalCategory,
       corrected_allocation: !!f.id && f.decision !== "reject" && (suggested.allocation ?? "personal") !== finalAllocation,
       corrected_pot: !!f.id && f.decision !== "reject" && (finalAllocation === "household" || finalAllocation === "giving") && (suggested.pot ?? null) !== finalPot,
       final_trip: tripId ? trips.find((t) => t.id === tripId)?.name ?? null : null,
@@ -492,7 +494,7 @@ export async function suggestCategories() {
         knowledge: await knowledge({ merchantKey: t.merchant_key ?? merchantKey(raw), merchantRaw: raw, counterparty: t.counterparty_type ?? "unknown" }),
         trips: nearbyTrips(tripOpts, t.occurred_at),
       }, categories.map((c) => c.name));
-      const catId = d.category ? byName.get(d.category) : undefined;
+      const catId = d.allocation === "giving" ? byName.get("Giving") : d.category ? byName.get(d.category) : undefined;
       if (!catId) return;
       const base = d.allocation === "household" && !hasHousehold ? "personal" : d.allocation ?? "personal";
       const allocation = d.trip && base === "personal" ? "trip" : base;

@@ -123,7 +123,7 @@ export function TxnForm({
       <div className="block">
         <div className="lbl">Allocation</div>
         <div className="seg-five"><Segmented name="allocation" value={allocation} options={ALLOCATIONS} /></div>
-        {utilityHint && <div className="small faint" style={{ marginTop: 6 }}>Looks like a household utility bill</div>}
+        {utilityHint && <div className="small faint hint-household" style={{ marginTop: 6 }}>Looks like a household utility bill</div>}
       </div>
 
       <div className="block when-work">
@@ -190,13 +190,13 @@ export function TxnForm({
         <div className="small faint when-work-only" style={{ marginTop: 6 }}>Optional: tag the business trip. A trip with work spends counts as a business trip.</div>
       </div>
 
-      <div className="block">
+      <div className="block when-not-giving">
         <div className="lbl" style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
           <span>Category</span>
           {mode === "review" && txn?.category_id && <span className="faint">{suggestionSource(txn.classifier, confidence)}</span>}
         </div>
         <div className="chips">
-          {categories.map((c) => (
+          {categories.filter((c) => c.name !== "Giving").map((c) => (
             <label key={c.id}>
               <input type="radio" name="category_id" value={c.id} defaultChecked={txn?.category_id === c.id} />
               <span>{c.name}</span>

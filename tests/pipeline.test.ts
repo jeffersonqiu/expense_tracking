@@ -156,7 +156,7 @@ describe("processEmail", () => {
       decide: async () => ({ ...NO_DECISION, category: "Other", categoryConfidence: 0.9, allocation: "giving", allocationConfidence: 0.9, givingKind: "regular", givingConfidence: 0.8 }),
     };
     const out = await processEmail(F.wiseToFoundation, ctx(ai));
-    expect(out.drafts[0]).toMatchObject({ allocation: "giving", givingKind: "regular", householdPot: null });
+    expect(out.drafts[0]).toMatchObject({ allocation: "giving", givingKind: "regular", householdPot: null, categoryName: "Giving" });
     expect(out.drafts[0]!.suggestion).toMatchObject({ allocation: "giving", pot: "regular" });
   });
 
@@ -237,8 +237,15 @@ describe("wise", () => {
     });
     expect(txn(F.wiseToPerson)).toMatchObject({ amount: 300000, currency: "IDR", merchantRaw: "Wise to Budi Santoso", counterpartyType: "individual" });
   });
-  it("a transfer to your own account is a transfer, not spending", () => {
-    expect(txn(F.wiseToSelf)).toMatchObject({ kind: "transfer", merchantRaw: "Wise to own account", amount: 639.54 });
+  it("a transfer to your own account comes in for review with what arrived", () => {
+    expect(txn(F.wiseToSelf)).toMatchObject({ kind: "spend", merchantRaw: "Wise to own account", amount: 639.54, description: "Received 9,057,500 IDR · Wise #3333333333" });
+  });
+  it("a Wise transfer and the UOB PayNow that funded it are one spend", () => {
+    const wise = txn(F.wiseToFoundation);
+    expect(wise.role).toBe("receipt");
+    const uob = { id: "u1", occurredAt: "2026-11-28T05:18:00Z", amount: 99.3, currency: "SGD", role: "rail" as const, merchantKey: "wise", status: "pending" as const };
+    expect(findDuplicate({ occurredAt: wise.occurredAt, amount: wise.amount, currency: wise.currency, role: wise.role, merchantKey: "wise to yayasan contoh harapan" }, [uob]))
+      .toEqual({ action: "existing_is_duplicate", id: "u1" });
   });
   it("status updates are ignored", () => {
     expect(runParsers(F.wisePaused).type).toBe("ignored");
