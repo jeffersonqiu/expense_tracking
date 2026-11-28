@@ -2,8 +2,9 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { runParsers } from "../pipeline/parsers";
 import { displayMerchant, merchantKey } from "../pipeline/categorize";
-import { findDuplicate, type ExistingTxn } from "../pipeline/dedupe";
 import { fxRate, toBase } from "./fx";
+import { mergeWiseLegs } from "./wise";
+import { ingestEmail } from "./ingest";
 
 /**
  * Spends waiting in Review that the AI read (no dedicated reader at the time)
@@ -38,25 +39,23 @@ export async function reparsePending(db: SupabaseClient, userId: string, base: s
     await db.from("source_emails").update({ parser: r.parser, status: "transaction", reason: null }).eq("id", e.id).eq("user_id", userId);
     fixed++;
 
-    // The bank alert for the same money (e.g. UOB PayNow to Wise) is now a duplicate of this receipt.
-    if (t.role === "receipt") {
-      const at = new Date(t.occurredAt).getTime();
-      const near = await db.from("transactions")
-        .select("id, occurred_at, amount, currency, source_role, merchant_key, status, payment_method")
-        .eq("user_id", userId).is("duplicate_of", null).neq("id", row.id)
-        .gte("occurred_at", new Date(at - 3 * 3600e3).toISOString()).lte("occurred_at", new Date(at + 3 * 3600e3).toISOString());
-      const cands: ExistingTxn[] = (near.data ?? []).map((x) => ({
-        id: x.id, occurredAt: x.occurred_at, amount: Number(x.amount), currency: x.currency,
-        role: x.source_role === "receipt" ? "receipt" : "rail", merchantKey: x.merchant_key ?? "", status: x.status,
-      }));
-      const dup = findDuplicate({ occurredAt: t.occurredAt, amount: t.amount, currency: t.currency, role: "receipt", merchantKey: key }, cands);
-      if (dup.action === "existing_is_duplicate") {
-        await db.from("transactions").update({ status: "rejected", duplicate_of: row.id }).eq("id", dup.id).eq("user_id", userId);
-      } else if (dup.action === "candidate_is_duplicate") {
-        // You already accepted the bank leg: keep yours, drop this copy.
-        await db.from("transactions").update({ status: "rejected", duplicate_of: dup.of }).eq("id", row.id).eq("user_id", userId);
-      }
-    }
   }
+
+  // Wise emails the first version of the Wise reader wrongly skipped: read them again now.
+  const skipped = await db.from("source_emails").select("id, gmail_message_id, gmail_thread_id, from_address, subject, received_at, body_text")
+    .eq("user_id", userId).eq("parser", "wise").eq("status", "ignored").eq("reason", "not a transfer receipt")
+    .gte("received_at", new Date(Date.now() - 14 * 86400e3).toISOString()).limit(20);
+  for (const e of skipped.data ?? []) {
+    const email = { messageId: e.gmail_message_id, threadId: e.gmail_thread_id ?? undefined, from: e.from_address, subject: e.subject, date: e.received_at, labels: [], text: e.body_text };
+    if (runParsers(email).type !== "transaction") continue;
+    await db.from("source_emails").delete().eq("id", e.id).eq("user_id", userId);
+    const r = await ingestEmail(db, userId, email, null).catch((err) => { console.error("re-ingest wise", err); return null; });
+    if (r?.status === "transaction") fixed++;
+  }
+
+  // Fold Wise transfers and their bank top-ups that are both still around (new or just re-read).
+  const wiseRows = await db.from("transactions").select("id")
+    .eq("user_id", userId).eq("status", "pending").is("duplicate_of", null).ilike("merchant_key", "%wise%").limit(40);
+  for (const w of wiseRows.data ?? []) if (await mergeWiseLegs(db, userId, w.id)) fixed++;
   return fixed;
 }

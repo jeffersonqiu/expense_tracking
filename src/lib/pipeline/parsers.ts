@@ -1,5 +1,5 @@
 import type { IncomingEmail, ParseResult, Parser, ParsedTxn } from "./types";
-import { currencyFromSymbol, flatten, fromDomain, parseAmount, parseSgtDate } from "./text";
+import { compactBody, currencyFromSymbol, flatten, fromDomain, parseAmount, parseSgtDate } from "./text";
 
 const ok = (parser: string, txns: ParsedTxn[]): ParseResult => ({ type: "transaction", parser, txns });
 const ignore = (parser: string, reason: string): ParseResult => ({ type: "ignored", parser, reason });
@@ -303,26 +303,27 @@ export const wise: Parser = {
     if (!/^transfer sent/i.test(e.subject.trim())) {
       return /paused|cancel|refund|verify/i.test(e.subject) ? ignore("wise", "transfer status update") : { type: "unknown" };
     }
-    const t = flatten(e.text);
-    const head = /#\s*([\d,.]+)\s+([A-Z]{3}) is now in (?:(.+?)['’]s|your) account\./.exec(t);
-    const det = /Amount:\s*([\d,.]+)\s+([A-Z]{3})(?:\s+Rate:[^W]*?)?\s+Wise fee:\s*([\d,.]+)\s+([A-Z]{3})/.exec(t);
-    const no = /Transfer Number:\s*#(\d+)/.exec(t)?.[1];
-    if (!head || !det) return ignore("wise", "not a transfer receipt");
-    const mo = money(det[2], det[1]);
-    if (!mo) return ignore("wise", "unreadable amount");
+    const t = flatten(compactBody(e.text));
+    // Headline, with or without a leading "#" (Gmail's plain text has none):
+    // "50,000 IDR is now in Tania Devina's account." / "... is now in your account."
+    const head = /(?:^|[\s#|])([\d][\d,.]*)\s*([A-Z]{3}) is now in (?:(.+?)['’]s|your) account/.exec(t);
+    if (!head) return ignore("wise", "not a transfer receipt");
+    // "Amount: 4.47 SGD": what left your account, fee included. Missing in some emails.
+    const det = /Amount:?\s*([\d][\d,.]*)\s*([A-Z]{3})/.exec(t);
+    const no = /Transfer Number:?\s*#?(\d{6,})/.exec(t)?.[1] ?? /#(\d{6,})/.exec(e.subject)?.[1];
     const recipient = head[3]?.trim();
     const received = `${head[1]} ${head[2]}`;
+    // Without the paid amount, use what arrived; the bank top-up leg supplies the SGD later.
+    const mo = (det ? money(det[2], det[1]) : null) ?? money(head[2], head[1]);
+    if (!mo) return ignore("wise", "unreadable amount");
     const org = recipient && /\b(yayasan|foundation|fund|charity|church|temple|masjid|mosque|pt|ltd|inc|llc|gereja|panti)\b/i.test(recipient);
     return ok("wise", [{
       ...mo,
       occurredAt: e.date,
-      // To your own account (e.g. an IDR account used for family): a spend to review like any other;
-      // the AI learns what these are for, and you reject the ones that only move money.
       kind: "spend",
       merchantRaw: recipient ? `Wise to ${recipient}` : "Wise to own account",
       counterpartyType: recipient ? (org ? "business" : "individual") : "unknown",
       paymentMethod: "Wise",
-      // A receipt: the bank PayNow/card leg that funded it (same amount) is the same money.
       role: "receipt",
       description: `Received ${received}${no ? ` · Wise #${no}` : ""}`,
     }]);

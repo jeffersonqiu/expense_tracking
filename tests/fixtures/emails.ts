@@ -208,3 +208,20 @@ export const wisePaused: IncomingEmail = {
   subject: "Transfer of SGD to 200.0 SGD paused",
   text: "We've paused your transfer. Please verify.",
 };
+
+// Wise as Apps Script's getPlainBody delivers it: no markdown, heavy padding.
+const pad = "\n  \n​\n".repeat(400);
+export const wisePlain: IncomingEmail = {
+  ...base,
+  messageId: "wise5",
+  from: "Wise <noreply@wise.com>",
+  subject: "Transfer sent (#4444444444)",
+  date: "2026-11-28T05:00:12Z",
+  text: ` Wise. Your account for the world's money${pad}Hello Alex,\n50,000 IDR is now in Siti Rahma's account.\n\nYour money got there in just 3 seconds. Now that's what we call maximum\nease at full speed.${pad}Transfer details\nAmount: 4.47 SGD\nRate: 1 SGD = 14,221.50 IDR\nWise fee: 0.95 SGD\nSent at: 13:00 (GMT+08:00) on 28 November 2026\nTransfer Number: #4444444444\n${pad}Thanks,\nThe Wise team`,
+};
+
+export const wisePlainNoDetails: IncomingEmail = {
+  ...wisePlain,
+  messageId: "wise6",
+  text: ` Wise.${pad}Hello Alex,\n50,000 IDR is now in Siti Rahma's account.${pad}Thanks,\nThe Wise team`,
+};

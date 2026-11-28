@@ -107,6 +107,7 @@ export function TxnForm({
             <div className="meta">
               <span>{sgtDateTime(txn.occurred_at)}</span>
               {txn.payment_method && <span>{txn.payment_method}</span>}
+              {txn.description?.startsWith("Received ") && <span>{txn.description.split(" · ")[0]}</span>}
               {txn.kind === "refund" && <span className="pill good">Refund</span>}
               {txn.kind === "investment" && <span className="pill tint">Investment</span>}
               {txn.needs_manual_amount && <span className="pill warn">Check amount</span>}

@@ -10,6 +10,7 @@ import type { Decider } from "../ai/types";
 import { env } from "../env";
 import { fxRate, toBase } from "./fx";
 import { knowledgeFor } from "./knowledge";
+import { mergeWiseLegs } from "./wise";
 import type { Knowledge } from "../ai/types";
 
 const BODY_LIMIT = 20_000;
@@ -172,6 +173,9 @@ export async function ingestEmail(
       if (rail.data?.payment_method) {
         await db.from("transactions").update({ payment_method: rail.data.payment_method }).eq("id", ins.data.id);
       }
+    } else if (dup.action === "none" && ins.data) {
+      // A Wise transfer and its bank top-up are one spend (even in different currencies).
+      await mergeWiseLegs(db, userId, ins.data.id);
     } else if (dup.action === "candidate_is_duplicate" && d.role === "rail" && d.paymentMethod) {
       // The bank alert says how the money actually moved; prefer it over the receipt's label.
       await db.from("transactions").update({ payment_method: d.paymentMethod }).eq("id", dup.of).eq("user_id", userId);

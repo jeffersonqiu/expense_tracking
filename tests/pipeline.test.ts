@@ -237,6 +237,15 @@ describe("wise", () => {
     });
     expect(txn(F.wiseToPerson)).toMatchObject({ amount: 300000, currency: "IDR", merchantRaw: "Wise to Budi Santoso", counterpartyType: "individual" });
   });
+  it("reads the plain-text Wise email the Gmail connector actually receives", () => {
+    expect(txn(F.wisePlain)).toMatchObject({
+      amount: 4.47, currency: "SGD", merchantRaw: "Wise to Siti Rahma", counterpartyType: "individual",
+      description: "Received 50,000 IDR · Wise #4444444444", role: "receipt",
+    });
+  });
+  it("without the paid amount, falls back to what arrived", () => {
+    expect(txn(F.wisePlainNoDetails)).toMatchObject({ amount: 50000, currency: "IDR", merchantRaw: "Wise to Siti Rahma", description: "Received 50,000 IDR · Wise #4444444444" });
+  });
   it("a transfer to your own account comes in for review with what arrived", () => {
     expect(txn(F.wiseToSelf)).toMatchObject({ kind: "spend", merchantRaw: "Wise to own account", amount: 639.54, description: "Received 9,057,500 IDR · Wise #3333333333" });
   });
