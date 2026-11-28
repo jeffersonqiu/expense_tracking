@@ -28,3 +28,4 @@ export const IconChart = S(<><path d="M4 20V10M10 20V4M16 20v-7M22 20H2" /></>);
 export const IconWallet = S(<><rect x="3" y="6" width="18" height="14" rx="2.5" /><path d="M3 10h18" /><path d="M16 15h2" /></>);
 export const IconSparkle = S(<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z" />);
 export const IconClock = S(<><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>);
+export const IconPlane = S(<path d="M10.5 21l1.5-1v-5l8 3v-2l-8-5V5.5a1.5 1.5 0 0 0-3 0V11l-8 5v2l8-3v5l1.5 1z" />);

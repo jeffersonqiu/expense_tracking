@@ -34,6 +34,8 @@ insert into public.knowledge_facts(user_id, subject_type, subject, statement) va
   ('00000000-0000-0000-0000-00000000000a', 'merchant', 'joyful cck', 'Owner fact');
 insert into public.decision_log(user_id, decision, merchant) values ('00000000-0000-0000-0000-00000000000a', 'accept', 'x');
 
+insert into public.trips(id, user_id, name, start_date) values ('30000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-00000000000a', 'Bangkok', '2026-10-20');
+
 -- As wife
 set role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000000b', false);
@@ -45,8 +47,14 @@ select count(*) = 0 as ok from public.transactions where id = '20000000-0000-000
 \if :ok \else \echo 'FAIL wife sees owner personal row' \q \endif
 select public.mark_household_reimbursed(array['20000000-0000-0000-0000-000000000001']::uuid[], true) = 0 as ok \gset
 \if :ok \else \echo 'FAIL wife could mark reimbursed' \q \endif
-select (select count(*) from public.knowledge_facts) + (select count(*) from public.decision_log) = 0 as ok \gset
-\if :ok \else \echo 'FAIL wife sees owner knowledge or decisions' \q \endif
+select (select count(*) from public.knowledge_facts) + (select count(*) from public.decision_log) + (select count(*) from public.trips) = 0 as ok \gset
+\if :ok \else \echo 'FAIL wife sees owner knowledge, decisions or trips' \q \endif
+do $$ begin
+  update public.transactions set trip_id = '30000000-0000-0000-0000-000000000001', trip_bucket = 'daily' where id = '20000000-0000-0000-0000-000000000003';
+  raise exception 'tagged own spend with someone else''s trip';
+exception when raise_exception then
+  if sqlerrm not like '%another user%' then raise; end if;
+end $$;
 do $$ begin
   insert into public.knowledge_facts(user_id, subject_type, subject, statement) values ('00000000-0000-0000-0000-00000000000b', 'merchant', 'x', 'self-written');
   raise exception 'users can write facts directly';

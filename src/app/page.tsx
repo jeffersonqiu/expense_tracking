@@ -4,11 +4,12 @@ import { householdMonth, personalMonth } from "@/lib/server/summary";
 import { money, sgtDate } from "@/lib/format";
 import { Shell, Header } from "./ui/Shell";
 import { MonthStepper } from "./ui/MonthStepper";
-import { IconAlert, IconBriefcase, IconChart, IconChevronRight, IconHouse, IconInbox, IconPeople } from "./ui/Icons";
+import { IconAlert, IconBriefcase, IconChart, IconChevronRight, IconGear, IconHouse, IconInbox, IconPeople, IconPlane } from "./ui/Icons";
+import { tripTotals, sumTotals } from "@/lib/server/trips";
 
 export default async function Summary({ searchParams }: { searchParams: Promise<{ m?: string }> }) {
   const sp = await searchParams;
-  const { db, uid, profile, categories, households, pendingCount } = await getContext();
+  const { db, uid, profile, categories, households, trips, pendingCount } = await getContext();
   const base = profile?.base_currency ?? "SGD";
   const { ym, start, end } = monthRange(sp.m);
   const prev = monthRange(shiftMonth(ym, -1));
@@ -25,6 +26,9 @@ export default async function Summary({ searchParams }: { searchParams: Promise<
     db.from("transactions").select("id, occurred_at, merchant, amount, currency, kind, category_id").eq("user_id", uid).eq("status", "confirmed").gte("occurred_at", start).lt("occurred_at", end).order("occurred_at", { ascending: false }).limit(5),
   ]);
 
+  const year = ym.slice(0, 4);
+  const yearTrips = trips.filter((t) => t.start_date.startsWith(year));
+  const tripYear = sumTotals([...(await tripTotals(db, yearTrips)).values()]);
   const claimTotal = (claims.data ?? []).reduce((s, r) => s + Number(r.base_amount ?? 0), 0);
   const owedToMe = (shares.data ?? []).reduce((s, r) => {
     const tx = r.transactions as unknown as { fx_rate: number | null; status: string };
@@ -46,7 +50,10 @@ export default async function Summary({ searchParams }: { searchParams: Promise<
 
   return (
     <Shell active="summary" pending={pendingCount}>
-      <Header title="Summary"><MonthStepper ym={ym} path="/" /></Header>
+      <Header title="Summary">
+        <MonthStepper ym={ym} path="/" />
+        <Link href="/settings" className="btn icon gear-link" aria-label="Settings"><IconGear /></Link>
+      </Header>
 
       {stale && (
         <Link href="/settings" className="banner warn" style={{ color: "var(--label)" }}>
@@ -81,6 +88,11 @@ export default async function Summary({ searchParams }: { searchParams: Promise<
             <div className="t-foot">{spent > budget ? <span className="bad">over budget</span> : `left of ${money(budget, hh.currency)}`}</div>
           </Link>
         )}
+        <Link href={`/trips?y=${year}`} className="tile">
+          <div className="t-label"><IconPlane />Trips {year}</div>
+          <div className="t-value">{money(tripYear.total, base)}</div>
+          <div className="t-foot">{yearTrips.length} {yearTrips.length === 1 ? "trip" : "trips"}, tracked separately</div>
+        </Link>
         <Link href="/balances" className="tile">
           <div className="t-label"><IconBriefcase />Work claims</div>
           <div className="t-value">{money(claimTotal, base)}</div>

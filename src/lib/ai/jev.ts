@@ -1,5 +1,5 @@
 import type { IncomingEmail, Kind } from "../pipeline/types";
-import { ALLOCATION_GUIDE, POT_GUIDE, decisionState, type Allocation, type CostSink, type Decider, type Decision, type DecisionInput, type Extracted, type Pot } from "./types";
+import { ALLOCATION_GUIDE, BUCKET_GUIDE, POT_GUIDE, decisionState, type TripBucket, type Allocation, type CostSink, type Decider, type Decision, type DecisionInput, type Extracted, type Pot } from "./types";
 
 /**
  * Jev (TypeSafe System One decision model) via OpenRouter's Decisions API.
@@ -106,6 +106,17 @@ export class JevDecider implements Decider {
         criteria: ALLOCATION_GUIDE,
       },
     };
+    const trips = input.trips ?? [];
+    if (trips.length) {
+      const tripCriteria: Record<string, string> = { none: "Not part of a trip: everyday spending at home." };
+      for (const t of trips) tripCriteria[t.id] = `${t.name} (${t.start} to ${t.end ?? "?"}), including bookings made before it`;
+      questions.trip = {
+        type: "choice",
+        instructions: "Does this spend belong to one of the user's trips? Spends abroad during a trip's dates, and flight/hotel bookings for its destination, belong to it.",
+        criteria: tripCriteria,
+      };
+      questions.trip_bucket = { type: "choice", instructions: "If it is part of a trip, which trip budget bucket?", criteria: BUCKET_GUIDE };
+    }
     if (input.hasHousehold) {
       questions.pot = { type: "choice", instructions: "If this is household spending, which household pot does it belong to?", criteria: POT_GUIDE };
     }
@@ -114,7 +125,13 @@ export class JevDecider implements Decider {
     const cat = pick("category");
     const alloc = pick("allocation");
     const pot = pick("pot");
+    const trip = pick("trip");
+    const bucket = pick("trip_bucket");
+    const tripId = trip && trip.choice !== "none" && trips.some((t) => t.id === trip.choice) ? trip.choice : null;
     return {
+      trip: tripId,
+      tripConfidence: clamp(trip?.confidence),
+      bucket: tripId && bucket && bucket.choice in BUCKET_GUIDE ? (bucket.choice as TripBucket) : null,
       category: cat && categories.includes(cat.choice) ? cat.choice : null,
       categoryConfidence: clamp(cat?.confidence),
       allocation: alloc && alloc.choice in ALLOCATION_GUIDE ? (alloc.choice as Allocation) : null,

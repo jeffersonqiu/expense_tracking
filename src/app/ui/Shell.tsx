@@ -1,15 +1,16 @@
 import Link from "next/link";
-import { IconGear, IconHouse, IconInbox, IconList, IconPeople, IconSummary, IconWallet } from "./Icons";
+import { IconGear, IconHouse, IconInbox, IconList, IconPeople, IconPlane, IconSummary, IconWallet } from "./Icons";
 
-export type Section = "summary" | "review" | "activity" | "household" | "balances" | "settings";
+export type Section = "summary" | "review" | "activity" | "household" | "trips" | "balances" | "settings";
 
 const NAV: { id: Section; href: string; label: string; Icon: (p: { className?: string }) => React.ReactNode; tab: boolean }[] = [
   { id: "summary", href: "/", label: "Summary", Icon: IconSummary, tab: true },
   { id: "review", href: "/review", label: "Review", Icon: IconInbox, tab: true },
   { id: "activity", href: "/transactions", label: "Activity", Icon: IconList, tab: true },
   { id: "household", href: "/household", label: "Household", Icon: IconHouse, tab: true },
+  { id: "trips", href: "/trips", label: "Trips", Icon: IconPlane, tab: true },
   { id: "balances", href: "/balances", label: "Balances", Icon: IconPeople, tab: false },
-  { id: "settings", href: "/settings", label: "Settings", Icon: IconGear, tab: true },
+  { id: "settings", href: "/settings", label: "Settings", Icon: IconGear, tab: false },
 ];
 
 /** App chrome: translucent sidebar on desktop, tab bar on phones. */

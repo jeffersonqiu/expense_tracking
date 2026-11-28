@@ -57,7 +57,7 @@ describe("JevDecider", () => {
       merchant: "RITZ CARLTON JKT", amount: 588060, currency: "IDR", snippet: "", hasHousehold: true,
       knowledge: { facts: ["Hotels in Jakarta in Nov 2026 were work trips"], examples: [{ merchant: "RITZ CARLTON BALI", when: "Tue 21:00", amount: "IDR 1", category: "Hotels", allocation: "work", pot: null, correction: "user corrected AI: category Travel -> Hotels" }] },
     }, ["Travel", "Hotels"]);
-    expect(d).toEqual({ category: "Hotels", categoryConfidence: 0.7, allocation: "work", allocationConfidence: 0.82, pot: "bills", potConfidence: 0.4 });
+    expect(d).toMatchObject({ category: "Hotels", categoryConfidence: 0.7, allocation: "work", allocationConfidence: 0.82, pot: "bills", potConfidence: 0.4, trip: null });
     const body = calls[0]!.body;
     expect(Object.keys(body.questions)).toEqual(["category", "allocation", "pot"]);
     expect(Object.keys(body.questions.allocation.criteria)).toEqual(["personal", "work", "shared", "household"]);
@@ -67,5 +67,23 @@ describe("JevDecider", () => {
     stubFetch({ category: { type: "refusal" }, allocation: { type: "refusal" } });
     const r = await jev.decide({ merchant: "x", amount: 1, currency: "SGD", snippet: "", hasHousehold: false, knowledge: { facts: [], examples: [] } }, ["Food"]);
     expect(r).toMatchObject({ category: null, allocation: null, pot: null });
+  });
+
+  it("asks which trip and bucket when trips are nearby", async () => {
+    const calls = stubFetch({
+      category: { type: "choice", choice: "Travel", confidence: 0.8, probabilities: {} },
+      allocation: { type: "choice", choice: "personal", confidence: 0.9, probabilities: {} },
+      trip: { type: "choice", choice: "t-bkk", confidence: 0.86, probabilities: {} },
+      trip_bucket: { type: "choice", choice: "transport", confidence: 0.9, probabilities: {} },
+    });
+    const jev = new JevDecider("k", () => {}, null);
+    const d = await jev.decide({
+      merchant: "SCOOT", amount: 210, currency: "SGD", snippet: "SIN -> BKK 20 Oct", hasHousehold: false,
+      knowledge: { facts: [], examples: [] },
+      trips: [{ id: "t-bkk", name: "Agentix Bangkok", start: "2026-10-20", end: "2026-10-23" }],
+    }, ["Travel", "Hotels"]);
+    expect(d).toMatchObject({ trip: "t-bkk", bucket: "transport", tripConfidence: 0.86 });
+    expect(Object.keys(calls[0]!.body.questions.trip.criteria)).toEqual(["none", "t-bkk"]);
+    expect(Object.keys(calls[0]!.body.questions.trip_bucket.criteria)).toEqual(["daily", "transport", "hotels"]);
   });
 });

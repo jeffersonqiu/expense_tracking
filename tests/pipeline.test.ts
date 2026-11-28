@@ -202,3 +202,18 @@ describe("hotels", () => {
     expect(keywordCategory("Singapore Airlines")).toBe("Travel");
   });
 });
+
+describe("trips", () => {
+  it("offers only trips near the spend date and files spends inside a trip by date", async () => {
+    const { nearbyTrips, tripByDate } = await import("../src/lib/pipeline/process");
+    const trips = [
+      { id: "bkk", name: "Agentix Bangkok", start: "2026-10-20", end: "2026-10-23" },
+      { id: "ita", name: "Italy", start: "2026-12-18", end: "2026-12-30" },
+      { id: "old", name: "CNY 2025", start: "2025-01-28", end: "2025-02-02" },
+    ];
+    expect(nearbyTrips(trips, "2026-10-21T05:00:00Z").map((t) => t.id)).toEqual(["bkk", "ita"]);
+    expect(tripByDate(trips, "2026-10-21T05:00:00Z", "Hotels")).toEqual({ id: "bkk", bucket: "hotels" });
+    expect(tripByDate(trips, "2026-10-21T05:00:00Z", "Food")).toEqual({ id: "bkk", bucket: "daily" });
+    expect(tripByDate(trips, "2026-11-05T05:00:00Z", "Food")).toBeNull();
+  });
+});

@@ -1,7 +1,7 @@
 import { saveTransaction } from "./actions";
 import { isHouseholdUtility } from "@/lib/pipeline/categorize";
 import { money, sgtDateTime, toLocalInput } from "@/lib/format";
-import { defaultPot, type Category, type Household, type Project } from "@/lib/server/context";
+import { defaultPot, type Category, type Household, type Project, type Trip } from "@/lib/server/context";
 
 export interface TxnRow {
   id: string;
@@ -18,6 +18,8 @@ export interface TxnRow {
   claim_status: string | null;
   household_id: string | null;
   household_pot?: string | null;
+  trip_id?: string | null;
+  trip_bucket?: string | null;
   suggestion?: unknown;
   project_id?: string | null;
   description: string | null;
@@ -51,6 +53,14 @@ function Segmented({ name, value, options }: { name: string; value: string; opti
   );
 }
 
+/** Trips closest to the spend's date first (current/upcoming trips are the likely ones). */
+function tripOptions(trips: Trip[], occurredAt?: string, selected?: string | null): Trip[] {
+  const t = occurredAt ? new Date(occurredAt).getTime() : Date.now();
+  const near = [...trips].sort((a, b) => Math.abs(new Date(a.start_date).getTime() - t) - Math.abs(new Date(b.start_date).getTime() - t)).slice(0, 12);
+  const sel = selected ? trips.find((x) => x.id === selected) : undefined;
+  return sel && !near.includes(sel) ? [sel, ...near] : near;
+}
+
 function suggestionSource(classifier: string | null, confidence: number | null): string {
   if (classifier === "memory") return "From your past choice";
   if (confidence != null && confidence < 50 && (classifier === "jev" || classifier === "haiku")) return `Not sure · ${confidence}%`;
@@ -63,12 +73,13 @@ function suggestionSource(classifier: string | null, confidence: number | null):
 
 /** One captured spend: review card, edit form, or manual entry. */
 export function TxnForm({
-  txn, categories, households, projects = [], returnTo, mode,
+  txn, categories, households, projects = [], trips = [], returnTo, mode,
 }: {
   txn: TxnRow | null;
   categories: Category[];
   households: Household[];
   projects?: Project[];
+  trips?: Trip[];
   returnTo: string;
   mode: "review" | "edit" | "new";
 }) {
@@ -151,6 +162,24 @@ export function TxnForm({
           <textarea name="shares" rows={2} defaultValue={shares} placeholder="Alex: 12.50" />
         </label>
       </div>
+
+      {trips.length > 0 && (
+        <div className="block">
+          <label className="field"><span>Trip</span>
+            <select name="trip_id" defaultValue={txn?.trip_id ?? ""}>
+              <option value="">Not part of a trip</option>
+              {tripOptions(trips, txn?.occurred_at, txn?.trip_id).map((t) => (
+                <option key={t.id} value={t.id}>{t.name}</option>
+              ))}
+            </select>
+          </label>
+          <div className="when-trip" style={{ marginTop: 10 }}>
+            <Segmented name="trip_bucket" value={txn?.trip_bucket ?? "daily"} options={[
+              { value: "daily", label: "Daily" }, { value: "transport", label: "Transport" }, { value: "hotels", label: "Hotels" },
+            ]} />
+          </div>
+        </div>
+      )}
 
       <div className="block">
         <div className="lbl" style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>

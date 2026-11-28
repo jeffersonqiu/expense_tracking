@@ -55,6 +55,7 @@ export interface PastDecision {
   category: string | null;
   allocation: string | null;
   pot: string | null;
+  trip?: string | null;
   /** The user changed what the AI suggested: the most useful kind of example. */
   correction?: string;
 }
@@ -65,7 +66,20 @@ export interface Knowledge {
   examples: PastDecision[];
 }
 
+export type TripBucket = "daily" | "transport" | "hotels";
+
+/** A trip the spend might belong to (only nearby / upcoming trips are offered). */
+export interface TripOption { id: string; name: string; start: string; end: string | null }
+
+export const BUCKET_GUIDE: Record<TripBucket, string> = {
+  daily: "Spending during the trip: food, shopping, local rides, activities.",
+  transport: "Getting there and between cities: flights, trains, long-distance buses, airport transfers.",
+  hotels: "Accommodation: hotels, Airbnb, hostels.",
+};
+
 export interface DecisionInput extends CategoryInput {
+  /** When set, the model also says whether the spend belongs to one of these trips. */
+  trips?: TripOption[];
   keywordHint?: string | null;
   utilityHint?: boolean;
   hasHousehold: boolean;
@@ -79,6 +93,10 @@ export interface Decision {
   allocationConfidence: number;
   pot: Pot | null;
   potConfidence: number;
+  /** Trip id, or null when not part of a trip. */
+  trip?: string | null;
+  tripConfidence?: number;
+  bucket?: TripBucket | null;
 }
 
 export const ALLOCATION_GUIDE: Record<Allocation, string> = {
@@ -111,6 +129,7 @@ export function decisionState(i: DecisionInput) {
       looks_like_household_utility: i.utilityHint || undefined,
       user_has_household: i.hasHousehold,
     },
+    trips: i.trips?.length ? i.trips.map((t) => ({ name: t.name, from: t.start, to: t.end ?? "?" })) : undefined,
     what_we_know_about_this_user: i.knowledge.facts,
     similar_past_decisions: i.knowledge.examples,
   };

@@ -1,5 +1,5 @@
 import type { IncomingEmail } from "../pipeline/types";
-import { ALLOCATION_GUIDE, POT_GUIDE, decisionState, type Allocation, type CostSink, type Decider, type Decision, type DecisionInput, type Extracted, type Pot } from "./types";
+import { ALLOCATION_GUIDE, BUCKET_GUIDE, POT_GUIDE, decisionState, type TripBucket, type Allocation, type CostSink, type Decider, type Decision, type DecisionInput, type Extracted, type Pot } from "./types";
 
 const ENDPOINT = "https://openrouter.ai/api/v1/chat/completions";
 
@@ -129,10 +129,11 @@ export class OpenRouterHaiku implements Decider {
   }
 
   async decide(input: DecisionInput, categories: string[]): Promise<Decision> {
+    const tripIds = (input.trips ?? []).map((t) => t.id);
     const schema = {
       type: "object",
       additionalProperties: false,
-      required: ["category", "category_confidence", "allocation", "allocation_confidence", "pot", "pot_confidence"],
+      required: ["category", "category_confidence", "allocation", "allocation_confidence", "pot", "pot_confidence", "trip_id", "trip_confidence", "trip_bucket"],
       properties: {
         category: { type: "string", enum: categories },
         category_confidence: { type: "number", minimum: 0, maximum: 1 },
@@ -140,6 +141,9 @@ export class OpenRouterHaiku implements Decider {
         allocation_confidence: { type: "number", minimum: 0, maximum: 1 },
         pot: { type: ["string", "null"], enum: [...Object.keys(POT_GUIDE), null], description: "Only when allocation is household." },
         pot_confidence: { type: "number", minimum: 0, maximum: 1 },
+        trip_id: { type: ["string", "null"], enum: [...tripIds, null], description: "Trip this spend belongs to, or null." },
+        trip_confidence: { type: "number", minimum: 0, maximum: 1 },
+        trip_bucket: { type: ["string", "null"], enum: [...Object.keys(BUCKET_GUIDE), null] },
       },
     };
     const user = [
@@ -147,12 +151,14 @@ export class OpenRouterHaiku implements Decider {
       "corrections show what the AI previously got wrong. The same merchant can be filed differently depending on context.",
       `Allocations: ${JSON.stringify(ALLOCATION_GUIDE)}`,
       `Household pots: ${JSON.stringify(POT_GUIDE)}`,
+      `Trip buckets: ${JSON.stringify(BUCKET_GUIDE)}. Trips (by id): ${JSON.stringify((input.trips ?? []).map((t) => ({ id: t.id, name: t.name, from: t.start, to: t.end })))}`,
       `<context>\n${JSON.stringify(decisionState(input))}\n</context>`,
     ].join("\n");
     const r = await this.chat("decide", user, schema, 200);
     try {
       const j = JSON.parse(r.content) as {
         category: string; category_confidence: number; allocation: Allocation; allocation_confidence: number; pot: Pot | null; pot_confidence: number;
+        trip_id: string | null; trip_confidence: number; trip_bucket: TripBucket | null;
       };
       return {
         category: categories.includes(j.category) ? j.category : null,
@@ -161,6 +167,9 @@ export class OpenRouterHaiku implements Decider {
         allocationConfidence: clamp(j.allocation_confidence),
         pot: j.pot && j.pot in POT_GUIDE ? j.pot : null,
         potConfidence: clamp(j.pot_confidence),
+        trip: j.trip_id && tripIds.includes(j.trip_id) ? j.trip_id : null,
+        tripConfidence: clamp(j.trip_confidence),
+        bucket: j.trip_id && j.trip_bucket && j.trip_bucket in BUCKET_GUIDE ? j.trip_bucket : null,
       };
     } catch {
       return { category: null, categoryConfidence: 0, allocation: null, allocationConfidence: 0, pot: null, potConfidence: 0 };

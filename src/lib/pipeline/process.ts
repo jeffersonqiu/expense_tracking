@@ -1,5 +1,5 @@
 import type { IncomingEmail, ParsedTxn } from "./types";
-import type { Decider, Knowledge } from "../ai/types";
+import type { Decider, Knowledge, TripBucket, TripOption } from "../ai/types";
 import { runParsers } from "./parsers";
 import { looksTransactional, prefilter } from "./filters";
 import { amountAppearsIn } from "./text";
@@ -12,6 +12,32 @@ export interface ProcessContext {
   ai: Decider | null;
   categories: string[];
   hasHousehold: boolean;
+  /** The user's trips; only those near the spend's date are offered to the AI. */
+  trips?: TripOption[];
+}
+
+const DAY = 86400e3;
+
+/** Trips a spend could belong to: during the trip, or booked up to 6 months before it. */
+export function nearbyTrips(trips: TripOption[], occurredAt: string): TripOption[] {
+  const t = new Date(occurredAt).getTime();
+  return trips.filter((tr) => {
+    const start = new Date(tr.start + "T00:00:00+08:00").getTime();
+    const end = new Date((tr.end ?? tr.start) + "T23:59:59+08:00").getTime() + (tr.end ? 2 * DAY : 21 * DAY);
+    return t >= start - 180 * DAY && t <= end;
+  });
+}
+
+/** Without AI: a spend dated inside a trip belongs to it; the bucket comes from the category. */
+export function tripByDate(trips: TripOption[], occurredAt: string, category: string | null): { id: string; bucket: TripBucket } | null {
+  const t = new Date(occurredAt).getTime();
+  const hit = trips.find((tr) => {
+    const start = new Date(tr.start + "T00:00:00+08:00").getTime();
+    const end = tr.end ? new Date(tr.end + "T23:59:59+08:00").getTime() : start + 14 * DAY;
+    return t >= start && t <= end;
+  });
+  if (!hit) return null;
+  return { id: hit.id, bucket: category === "Hotels" ? "hotels" : category === "Travel" ? "transport" : "daily" };
 }
 
 /** What the AI (or the fallback rules) proposed, kept to compare with the final decision. */
@@ -19,8 +45,10 @@ export interface Suggestion {
   category: string | null;
   allocation: string | null;
   pot: string | null;
-  confidence: { category: number; allocation: number; pot: number };
+  confidence: { category: number; allocation: number; pot: number; trip?: number };
   source: string;
+  trip?: string | null;
+  bucket?: TripBucket | null;
 }
 
 export interface Draft extends ParsedTxn {
@@ -32,6 +60,8 @@ export interface Draft extends ParsedTxn {
   classifier: string;
   needsManualAmount: boolean;
   householdPot: string | null;
+  tripId: string | null;
+  tripBucket: TripBucket | null;
   suggestion: Suggestion;
 }
 
@@ -103,6 +133,12 @@ export async function processEmail(email: IncomingEmail, ctx: ProcessContext): P
       confidence: { category: keywordHint ? 0.7 : 0, allocation: 0.5, pot: utilityHint ? 0.6 : 0 },
       source: "rules",
     };
+    const byDate = tripByDate(ctx.trips ?? [], t.occurredAt, keywordHint);
+    if (byDate) {
+      suggestion.trip = byDate.id;
+      suggestion.bucket = byDate.bucket;
+      suggestion.confidence.trip = 0.6;
+    }
 
     if (ctx.ai && t.kind !== "transfer") {
       const knowledge = await ctx.knowledge({ merchantKey: key, merchantRaw: t.merchantRaw, counterparty: t.counterpartyType });
@@ -110,13 +146,16 @@ export async function processEmail(email: IncomingEmail, ctx: ProcessContext): P
         merchant: t.merchantRaw, amount: t.amount, currency: t.currency, snippet: email.text.slice(0, 1500),
         counterparty: t.counterpartyType, when: sgtWhen(t.occurredAt), paymentMethod: t.paymentMethod,
         keywordHint, utilityHint, hasHousehold: ctx.hasHousehold, knowledge,
+        trips: nearbyTrips(ctx.trips ?? [], t.occurredAt),
       }, ctx.categories);
       suggestion = {
         category: d.category ?? keywordHint,
         allocation: d.allocation === "household" && !ctx.hasHousehold ? "personal" : d.allocation ?? suggestion.allocation,
         pot: d.allocation === "household" && ctx.hasHousehold ? d.pot ?? "allowance" : null,
-        confidence: { category: d.categoryConfidence, allocation: d.allocationConfidence, pot: d.potConfidence },
+        confidence: { category: d.categoryConfidence, allocation: d.allocationConfidence, pot: d.potConfidence, trip: d.tripConfidence ?? 0 },
         source: classifier === "rules" ? ctx.ai.name : classifier,
+        trip: d.trip ?? null,
+        bucket: d.trip ? d.bucket ?? "daily" : null,
       };
     }
 
@@ -127,6 +166,8 @@ export async function processEmail(email: IncomingEmail, ctx: ProcessContext): P
       categoryName: suggestion.category,
       allocation: suggestion.allocation,
       householdPot: suggestion.allocation === "household" ? suggestion.pot : null,
+      tripId: suggestion.trip ?? null,
+      tripBucket: suggestion.trip ? suggestion.bucket ?? "daily" : null,
       confidence: Math.min(baseConfidence, suggestion.category ? suggestion.confidence.category || 0.5 : 0.5),
       classifier: suggestion.source,
       needsManualAmount,

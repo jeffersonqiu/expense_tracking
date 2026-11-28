@@ -14,7 +14,7 @@ export const metadata = { title: "Review · Expenses" };
 
 export default async function ReviewPage({ searchParams }: { searchParams: Promise<{ error?: string; ok?: string; done?: string }> }) {
   const flash = await searchParams;
-  const { db, uid, categories, households, projects, pendingCount } = await getContext();
+  const { db, uid, categories, households, projects, trips, pendingCount } = await getContext();
   const { data } = await db
     .from("transactions")
     .select("*, source_emails(subject, from_address, body_text), shared_shares(person_name, amount, settled_at)")
@@ -70,7 +70,7 @@ export default async function ReviewPage({ searchParams }: { searchParams: Promi
       ) : (
         rows.map((t) => (
           <SwipeCard key={t.id}>
-            <TxnForm txn={t} categories={categories} households={households} projects={projects} returnTo="/review" mode="review" />
+            <TxnForm txn={t} categories={categories} households={households} projects={projects} trips={trips} returnTo="/review" mode="review" />
           </SwipeCard>
         ))
       )}

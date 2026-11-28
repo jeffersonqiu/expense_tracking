@@ -28,7 +28,7 @@ export function myShare(r: SummaryRow): number {
 export async function personalMonth(db: SupabaseClient, uid: string, start: string, end: string) {
   const { data } = await db.from("transactions")
     .select("id, user_id, amount, fx_rate, base_amount, kind, allocation, category_id, household_id, reimbursed_at, shared_shares(amount, settled_at)")
-    .eq("user_id", uid).eq("status", "confirmed").in("allocation", ["personal", "shared"])
+    .eq("user_id", uid).eq("status", "confirmed").in("allocation", ["personal", "shared"]).is("trip_id", null)
     .gte("occurred_at", start).lt("occurred_at", end);
   const rows = (data ?? []) as SummaryRow[];
   const byCategory = new Map<string | null, number>();

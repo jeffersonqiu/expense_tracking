@@ -10,7 +10,7 @@ const STATUS: Record<string, string> = { pending: "Waiting for review", confirme
 export default async function TransactionPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   if (!/^[0-9a-f-]{36}$/.test(id)) notFound();
-  const { db, uid, categories, households, projects, pendingCount } = await getContext();
+  const { db, uid, categories, households, projects, trips, pendingCount } = await getContext();
   const { data } = await db.from("transactions")
     .select("*, source_emails(subject, from_address, body_text), shared_shares(person_name, amount, settled_at)")
     .eq("id", id).eq("user_id", uid).maybeSingle();
@@ -20,7 +20,7 @@ export default async function TransactionPage({ params }: { params: Promise<{ id
     <Shell active="activity" pending={pendingCount}>
       <Link href="/transactions" className="btn plain" style={{ marginLeft: -8 }}><IconChevronLeft />Activity</Link>
       <Header title="Transaction" sub={STATUS[t.status]} />
-      <TxnForm txn={t} categories={categories} households={households} projects={projects} returnTo="/transactions" mode="edit" />
+      <TxnForm txn={t} categories={categories} households={households} projects={projects} trips={trips} returnTo="/transactions" mode="edit" />
     </Shell>
   );
 }

@@ -58,11 +58,12 @@ export async function ingestEmail(
   const existing = await db.from("source_emails").select("id").eq("user_id", userId).eq("gmail_message_id", email.messageId).maybeSingle();
   if (existing.data) return { messageId: email.messageId, status: "duplicate_email" };
 
-  const [catRes, profileRes, ownHh, memberHh] = await Promise.all([
+  const [catRes, profileRes, ownHh, memberHh, tripsRes] = await Promise.all([
     db.from("categories").select("id, name").eq("user_id", userId).order("sort_order"),
     db.from("profiles").select("base_currency").eq("id", userId).single(),
     db.from("households").select("id").eq("owner_id", userId).limit(1),
     db.from("household_members").select("household_id").eq("user_id", userId).limit(1),
+    db.from("trips").select("id, name, start_date, end_date").eq("user_id", userId).order("start_date", { ascending: false }).limit(50),
   ]);
   const householdId: string | null = ownHh.data?.[0]?.id ?? memberHh.data?.[0]?.household_id ?? null;
   const categories = catRes.data ?? [];
@@ -73,6 +74,7 @@ export async function ingestEmail(
     categories: categories.map((c) => c.name as string),
     ai,
     hasHousehold: !!householdId,
+    trips: (tripsRes.data ?? []).map((t) => ({ id: t.id as string, name: t.name as string, start: t.start_date as string, end: (t.end_date as string | null) ?? null })),
     knowledge: knowledge ?? (ai ? await knowledgeFor(db, userId) : async () => ({ facts: [], examples: [] })),
   };
 
@@ -153,6 +155,8 @@ export async function ingestEmail(
       household_pot: allocation === "household" ? (d.householdPot === "project" ? "allowance" : d.householdPot ?? "allowance") : null,
       project_id: null,
       suggestion: d.suggestion,
+      trip_id: d.tripId,
+      trip_bucket: d.tripId ? d.tripBucket ?? "daily" : null,
       confidence: d.confidence,
       classifier: d.classifier,
       needs_manual_amount: d.needsManualAmount,

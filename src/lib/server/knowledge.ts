@@ -28,6 +28,7 @@ interface LogRow {
   merchant: string | null; merchant_key: string | null; local_time: string | null; amount: number | string | null; currency: string | null;
   counterparty_type: string | null; final_category: string | null; final_allocation: string | null; final_pot: string | null;
   corrected_category: boolean; corrected_allocation: boolean; corrected_pot: boolean;
+  final_trip?: string | null; corrected_trip?: boolean;
   suggested: { category?: string; allocation?: string; pot?: string } | null;
 }
 
@@ -49,7 +50,7 @@ export function rankKnowledge(q: { merchantRaw: string; counterparty: string }, 
   const scoredLog = log
     .map((r) => {
       const sim = similarity(q.merchantRaw, r.merchant ?? r.merchant_key ?? "");
-      const corrected = r.corrected_category || r.corrected_allocation || r.corrected_pot;
+      const corrected = r.corrected_category || r.corrected_allocation || r.corrected_pot || !!r.corrected_trip;
       const sameKind = r.counterparty_type === q.counterparty ? 0.05 : 0;
       return { r, corrected, score: sim + (corrected ? 0.15 : 0) + sameKind };
     })
@@ -62,6 +63,7 @@ export function rankKnowledge(q: { merchantRaw: string; counterparty: string }, 
     if (r.corrected_category) fixes.push(`category ${r.suggested?.category ?? "?"} -> ${r.final_category ?? "none"}`);
     if (r.corrected_allocation) fixes.push(`allocation ${r.suggested?.allocation ?? "?"} -> ${r.final_allocation ?? "?"}`);
     if (r.corrected_pot) fixes.push(`pot ${r.suggested?.pot ?? "?"} -> ${r.final_pot ?? "?"}`);
+    if (r.corrected_trip) fixes.push(`trip -> ${r.final_trip ?? "not a trip"}`);
     return {
       merchant: r.merchant ?? r.merchant_key ?? "?",
       when: r.local_time ?? "",
@@ -69,6 +71,7 @@ export function rankKnowledge(q: { merchantRaw: string; counterparty: string }, 
       category: r.final_category,
       allocation: r.final_allocation,
       pot: r.final_pot,
+      trip: r.final_trip ?? null,
       ...(corrected ? { correction: `user corrected AI: ${fixes.join("; ")}` } : {}),
     };
   });
@@ -83,7 +86,7 @@ export async function knowledgeFor(db: SupabaseClient, userId: string) {
       .select("subject_type, subject, statement, conditions, support, contradictions, last_seen_at")
       .eq("user_id", userId).eq("active", true).order("support", { ascending: false }).limit(400),
     db.from("decision_log")
-      .select("merchant, merchant_key, local_time, amount, currency, counterparty_type, final_category, final_allocation, final_pot, corrected_category, corrected_allocation, corrected_pot, suggested")
+      .select("merchant, merchant_key, local_time, amount, currency, counterparty_type, final_category, final_allocation, final_pot, final_trip, corrected_category, corrected_allocation, corrected_pot, corrected_trip, suggested")
       .eq("user_id", userId).eq("decision", "accept").gte("decided_at", since)
       .order("decided_at", { ascending: false }).limit(1500),
   ]);
