@@ -1,11 +1,11 @@
 import { getContext } from "@/lib/server/context";
 import { Shell, Header } from "../ui/Shell";
-import { IconCheckCircle, IconClock, IconSparkle } from "../ui/Icons";
+import { IconCheckCircle, IconSparkle } from "../ui/Icons";
 import { Toast } from "../ui/Toast";
 import { TxnForm, type TxnRow } from "../TxnForm";
 import { Flash } from "../Flash";
-import { suggestCategories, undoReview } from "../actions";
-import { SwipeCard } from "./SwipeCard";
+import { suggestCategories } from "../actions";
+import { ReviewQueue } from "./ReviewQueue";
 import { money } from "@/lib/format";
 
 export const maxDuration = 60;
@@ -28,30 +28,17 @@ export default async function ReviewPage({ searchParams }: { searchParams: Promi
     .select("id, merchant, amount, currency, kind, status, reviewed_at")
     .eq("user_id", uid).in("status", ["confirmed", "rejected"]).is("duplicate_of", null)
     .not("reviewed_at", "is", null).gte("reviewed_at", new Date(Date.now() - 12 * 3600e3).toISOString())
-    .order("reviewed_at", { ascending: false }).limit(3);
+    .order("reviewed_at", { ascending: false }).limit(10);
+  const empty = (
+    <div className="empty-state">
+      <IconCheckCircle />
+      <h2>You&apos;re all caught up</h2>
+      <p>New spends from Gmail will appear here within a few minutes.</p>
+    </div>
+  );
   return (
     <Shell active="review" pending={pendingCount}>
       <Header title="Review" sub={pendingCount > 0 ? `${pendingCount} to go · oldest first` : undefined}>
-        {(recent ?? []).length > 0 && (
-          <details className="recent">
-            <summary className="btn icon" aria-label="Recently reviewed"><IconClock /><span className="small">{(recent ?? []).length}</span></summary>
-            <div className="recent-pop list">
-              <div className="row" style={{ minHeight: 0, paddingBottom: 4 }}><div className="main small muted">Recently reviewed</div></div>
-              {(recent ?? []).map((r) => (
-                <div className="row" key={r.id} style={{ minHeight: 48 }}>
-                  <div className="main">
-                    <div className="title" style={{ fontWeight: 400 }}>{r.merchant ?? "—"}</div>
-                    <div className="subtitle">{r.status === "confirmed" ? "Accepted" : "Rejected"} · {money(r.amount, r.currency)}</div>
-                  </div>
-                  <form action={undoReview} className="inline">
-                    <input type="hidden" name="id" value={r.id} />
-                    <button className="btn plain">Undo</button>
-                  </form>
-                </div>
-              ))}
-            </div>
-          </details>
-        )}
         {rows.some((r) => !r.category_id && r.kind !== "transfer") && (
           <form action={suggestCategories}><button className="btn"><IconSparkle />Suggest categories</button></form>
         )}
@@ -60,20 +47,16 @@ export default async function ReviewPage({ searchParams }: { searchParams: Promi
       {doneRow && (
         <Toast key={doneRow.id} message={`${doneRow.status === "confirmed" ? "Accepted" : "Rejected"} · ${doneRow.merchant ?? "spend"}`} undoId={doneRow.id} />
       )}
-      {rows.length > 0 && <p className="swipe-tip small muted">Swipe a card right to accept, left to reject.</p>}
-      {rows.length === 0 ? (
-        <div className="empty-state">
-          <IconCheckCircle />
-          <h2>You&apos;re all caught up</h2>
-          <p>New spends from Gmail will appear here within a few minutes.</p>
-        </div>
-      ) : (
-        rows.map((t) => (
-          <SwipeCard key={t.id}>
-            <TxnForm txn={t} categories={categories} households={households} projects={projects} trips={trips} returnTo="/review" mode="review" />
-          </SwipeCard>
-        ))
-      )}
+      <ReviewQueue
+        empty={empty}
+        recent={(recent ?? []).map((r) => ({ id: r.id, merchant: r.merchant ?? "Spend", amount: money(r.amount, r.currency), status: r.status as "confirmed" | "rejected" }))}
+        items={rows.map((t) => ({
+          id: t.id,
+          merchant: t.merchant ?? t.merchant_raw ?? "Spend",
+          amount: money(t.amount, t.currency),
+          node: <TxnForm txn={t} categories={categories} households={households} projects={projects} trips={trips} returnTo="/review" mode="review" />,
+        }))}
+      />
     </Shell>
   );
 }

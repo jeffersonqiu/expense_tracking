@@ -1,5 +1,8 @@
 "use server";
 
+import { isRedirectError } from "next/dist/client/components/redirect-error";
+import { getURLFromRedirectError } from "next/dist/client/components/redirect";
+
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -67,6 +70,41 @@ const FIELD_LABELS: Record<string, string> = {
 
 /** Accept / reject / save one transaction (also creates manual ones when id is empty). */
 export async function saveTransaction(fd: FormData) {
+  await saveTxn(fd, false);
+}
+
+/**
+ * Review card decision without a page reload: the review queue hides the card
+ * straight away and calls this in the background. Errors come back as text.
+ */
+export async function reviewInline(fd: FormData): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
+  try {
+    return { ok: true, id: await saveTxn(fd, true) };
+  } catch (e) {
+    return { ok: false, error: messageFrom(e) };
+  }
+}
+
+/** Undo from the review queue, without a page reload. */
+export async function undoInline(id: string): Promise<{ ok: boolean; error?: string }> {
+  try {
+    await undoTxn(id);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: messageFrom(e) };
+  }
+}
+
+function messageFrom(e: unknown): string {
+  if (isRedirectError(e)) {
+    const msg = new URL(getURLFromRedirectError(e), "http://x").searchParams.get("error");
+    if (msg) return msg;
+  }
+  console.error("inline review", e);
+  return "That didn't save. Please try again.";
+}
+
+async function saveTxn(fd: FormData, inline: boolean): Promise<string> {
   const { db, uid, profile, categories, projects, trips } = await getContext();
   const returnTo = str(fd, "return_to") || "/review";
   const parsed = TxnForm.safeParse(Object.fromEntries(fd));
@@ -214,10 +252,12 @@ export async function saveTransaction(fd: FormData) {
     if (logErr) console.error("decision_log", logErr);
   }
 
+  if (inline) return id;
   revalidatePath("/", "layout");
   // From the review queue: come back with a short-lived Undo toast for this decision.
   if (returnTo === "/review" && f.decision !== "save") redirect(`/review?done=${id}`);
   if (f.return_to?.startsWith("/") && !f.return_to.startsWith("//")) redirect(f.return_to);
+  return id;
 }
 
 /** "lunch 12.50 grab" or "12 kopi" -> confirmed manual spend (cash etc.). */
@@ -477,8 +517,13 @@ export async function suggestCategories() {
 
 /** Put an accepted/rejected spend back into the review queue. */
 export async function undoReview(fd: FormData) {
+  const merchant = await undoTxn(str(fd, "id"));
+  revalidatePath("/", "layout");
+  back("/review", `${merchant ?? "Spend"} is back in Review.`, "ok");
+}
+
+async function undoTxn(id: string): Promise<string | null> {
   const { db, uid } = await getContext();
-  const id = str(fd, "id");
   const { data, error } = await db.from("transactions")
     .update({ status: "pending", reviewed_at: null })
     .eq("id", id).eq("user_id", uid).in("status", ["confirmed", "rejected"]).is("duplicate_of", null)
@@ -488,8 +533,7 @@ export async function undoReview(fd: FormData) {
   const last = await adminClient().from("decision_log").select("id").eq("user_id", uid).eq("transaction_id", id)
     .order("decided_at", { ascending: false }).limit(1).maybeSingle();
   if (last.data) await adminClient().from("decision_log").delete().eq("id", last.data.id).eq("user_id", uid);
-  revalidatePath("/", "layout");
-  back("/review", `${data.merchant ?? "Spend"} is back in Review.`, "ok");
+  return data.merchant;
 }
 
 /** Create or update a household project (name + optional budget). */
