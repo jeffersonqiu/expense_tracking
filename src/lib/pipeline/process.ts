@@ -3,7 +3,7 @@ import type { Decider } from "../ai/types";
 import { runParsers } from "./parsers";
 import { looksTransactional, prefilter } from "./filters";
 import { amountAppearsIn } from "./text";
-import { displayMerchant, keywordCategory, merchantKey } from "./categorize";
+import { displayMerchant, isHouseholdUtility, keywordCategory, merchantKey } from "./categorize";
 
 export interface MerchantMemory {
   categoryName: string | null;
@@ -129,12 +129,12 @@ export async function processEmail(email: IncomingEmail, ctx: ProcessContext): P
       merchant: displayMerchant(t.merchantRaw),
       merchantKey: key,
       categoryName,
-      allocation: mem?.allocation ?? null,
+      allocation: mem?.allocation ?? (isHouseholdUtility(t.merchantRaw) ? "household" : null),
       confidence: Math.min(baseConfidence, categoryName ? catConfidence : 0.5),
       classifier: catClassifier,
       needsManualAmount,
       autoAccept: !!mem?.autoAccept && !needsManualAmount && !!categoryName,
-      householdPot: mem?.householdPot ?? null,
+      householdPot: mem?.householdPot ?? (!mem?.allocation && isHouseholdUtility(t.merchantRaw) ? "bills" : null),
       projectId: mem?.projectId ?? null,
     });
   }

@@ -21,7 +21,7 @@ const RULES: Array<[RegExp, string]> = [
   [/\b(grab \(ride\)|tada|gojek|ryde|comfort|cdg|zig|taxi|ez ?link|simplygo|transitlink|mrt|smrt|sbs|lta|bus|train|kcic|whoosh|ktm|mtr|parking|carpark|petrol|shell|esso|caltex|spc)\b/, "Transport"],
   [/\b(fairprice|ntuc|sheng siong|cold storage|giant|don don donki|redmart|prime supermarket|hao mart)\b/, "Groceries"],
   [/\b(kitchen|cafe|caf|coffee|kopi|teh|restaurant|food|foods|eat|eatery|eating|bistro|bakery|bak kut|chicken|rice|noodle|noodles|mee|western|thai|japanese|korean|chinese|indian|ramen|sushi|hawker|canteen|kopitiam|dining|toast|bar|grill|pizza|burger|mala|hotpot|dim sum|dumpling|bubble tea|boba|mcdonald|kfc|subway|starbucks|ya kun|toast box|old chang kee|grabfood|foodpanda|deliveroo|baan ?thai|jp kr)\b/, "Food"],
-  [/\b(simba|singtel|starhub|m1|circles|sp services|sp group|town council|insurance)\b/, "Bills"],
+  [/\b(simba|singtel|starhub|m1|circles|sp services|sp group|town council|insurance|pacific ?light|geneco|senoko|tuas power|keppel electric|sembcorp power|city energy|city gas|myrepublic|viewqwest)\b/, "Bills"],
   [/\b(netflix|spotify|youtube|disney|apple com|icloud|google one|grok|xai|x subscription|openai|chatgpt|anthropic|claude|notion|adobe|microsoft)\b/, "Subscription"],
   [/\b(guardian|watsons|clinic|pharmacy|polyclinic|dental|medical|hospital|unity)\b/, "Health"],
   [/\b(furnish\w*|furniture|ikea|metal fabri\w*|hardware|renovation|aircon|plumb\w*)\b/, "House"],
@@ -36,4 +36,14 @@ export function keywordCategory(merchantRaw: string, hint?: string): string | nu
   const key = merchantKey(merchantRaw);
   for (const [re, cat] of RULES) if (re.test(key)) return cat;
   return null;
+}
+
+/**
+ * Utilities that are almost always household costs in Singapore: electricity,
+ * water/gas, town council, home broadband. (Mobile plans stay personal.)
+ */
+const HOUSEHOLD_UTILITY = /\b(sp group|sp services|sp digital|pacific ?light|geneco|senoko|tuas power|keppel electric|sembcorp power|union power|ohm energy|flo energy|city energy|city gas|town council|tc s&cc|s&cc|myrepublic|viewqwest|whizcomms|starhub broadband|singtel fibre|m1 fibre|home broadband|fibre broadband)\b/;
+
+export function isHouseholdUtility(merchantRaw: string): boolean {
+  return HOUSEHOLD_UTILITY.test(merchantKey(merchantRaw)) || HOUSEHOLD_UTILITY.test(merchantRaw.toLowerCase());
 }

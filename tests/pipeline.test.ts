@@ -155,3 +155,22 @@ describe("processEmail", () => {
     expect((await processEmail(F.unknownReceipt, ctx(honest))).drafts[0]!.needsManualAmount).toBe(false);
   });
 });
+
+describe("household utilities", () => {
+  it("recognises Singapore utilities but not mobile plans", async () => {
+    const { isHouseholdUtility } = await import("../src/lib/pipeline/categorize");
+    expect(isHouseholdUtility("Pacificlight Energy")).toBe(true);
+    expect(isHouseholdUtility("SP Services Ltd")).toBe(true);
+    expect(isHouseholdUtility("TOWN COUNCIL - TC S&CC")).toBe(true);
+    expect(isHouseholdUtility("SIMBA Telecom")).toBe(false);
+    expect(isHouseholdUtility("Grab (ride)")).toBe(false);
+  });
+
+  it("new utility emails arrive pre-filed as Household -> Bills", async () => {
+    const out = await processEmail(
+      { ...F.uobCard, messageId: "u1", text: F.uobCard.text.replace("GAIN CITY-FUNAN MAIN", "PACIFICLIGHT ENERGY") },
+      { ai: null, memory: async () => null, categories: ["Bills", "Other"] },
+    );
+    expect(out.drafts[0]).toMatchObject({ allocation: "household", householdPot: "bills", categoryName: "Bills" });
+  });
+});

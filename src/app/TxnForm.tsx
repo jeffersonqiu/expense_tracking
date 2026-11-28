@@ -1,4 +1,5 @@
 import { saveTransaction } from "./actions";
+import { isHouseholdUtility } from "@/lib/pipeline/categorize";
 import { money, sgtDateTime, toLocalInput } from "@/lib/format";
 import { defaultPot, type Category, type Household, type Project } from "@/lib/server/context";
 
@@ -76,7 +77,11 @@ export function TxnForm({
   const confidence = txn?.confidence != null ? Math.round(Number(txn.confidence) * 100) : null;
   const openProjects = projects.filter((p) => p.status === "open");
   const catName = categories.find((c) => c.id === txn?.category_id)?.name;
-  const pot = txn?.household_pot ?? defaultPot(catName, openProjects.length > 0);
+  // A utility that arrived as Personal (nothing remembered yet) is suggested as a household bill.
+  const utilityHint = !!txn && txn.status === "pending" && txn.allocation === "personal" && txn.classifier !== "memory"
+    && households.length > 0 && isHouseholdUtility(txn.merchant_raw ?? txn.merchant ?? "");
+  const allocation = utilityHint ? "household" : txn?.allocation ?? "personal";
+  const pot = utilityHint ? "bills" : txn?.household_pot ?? defaultPot(catName, openProjects.length > 0);
 
   return (
     <form action={saveTransaction} className="review">
@@ -105,7 +110,8 @@ export function TxnForm({
 
       <div className="block">
         <div className="lbl">Allocation</div>
-        <Segmented name="allocation" value={txn?.allocation ?? "personal"} options={ALLOCATIONS} />
+        <Segmented name="allocation" value={allocation} options={ALLOCATIONS} />
+        {utilityHint && <div className="small faint" style={{ marginTop: 6 }}>Looks like a household utility bill</div>}
       </div>
 
       <div className="block when-work">

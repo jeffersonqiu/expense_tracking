@@ -410,3 +410,10 @@ form:has(select[name="project_id"] option[value="__new"]:checked) .when-newproje
 .recent > summary svg { width: 18px; height: 18px; }
 .recent-pop { position: absolute; right: 0; top: calc(100% + 6px); width: min(86vw, 340px); z-index: 25; box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18); }
 @media (max-width: 860px) { .recent-pop { left: 0; right: auto; width: min(calc(100vw - 32px), 360px); } }
+
+/* Frosted strip behind the status bar (only has height on notched phones / home-screen app) */
+body::before {
+  content: ""; position: fixed; top: 0; left: 0; right: 0; height: env(safe-area-inset-top); z-index: 40;
+  background: var(--material); backdrop-filter: saturate(180%) blur(20px); -webkit-backdrop-filter: saturate(180%) blur(20px);
+  pointer-events: none;
+}
