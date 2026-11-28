@@ -175,11 +175,11 @@ describe("household utilities", () => {
   });
 });
 
-describe("accommodation", () => {
-  it("hotels and stays go to Accommodation, flights stay in Travel", () => {
-    expect(keywordCategory("THE RITZ CARLTON JKT O JAKARTA SLT")).toBe("Accommodation");
-    expect(keywordCategory("Marriott Bonvoy")).toBe("Accommodation");
-    expect(keywordCategory("AIRBNB * HM8XYZ")).toBe("Accommodation");
+describe("hotels", () => {
+  it("hotels and stays go to Hotels, flights stay in Travel", () => {
+    expect(keywordCategory("THE RITZ CARLTON JKT O JAKARTA SLT")).toBe("Hotels");
+    expect(keywordCategory("Marriott Bonvoy")).toBe("Hotels");
+    expect(keywordCategory("AIRBNB * HM8XYZ")).toBe("Hotels");
     expect(keywordCategory("Singapore Airlines")).toBe("Travel");
   });
 });

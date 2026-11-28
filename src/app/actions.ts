@@ -163,6 +163,18 @@ export async function saveTransaction(fd: FormData) {
 
   // Learn from the decision (merchant memory)
   if (f.decision === "accept" && f.remember && f.merchant) {
+    // Apply the same choice to other cards from this merchant still waiting in Review.
+    await db.from("transactions").update({
+      category_id: f.category_id || null,
+      kind: f.kind,
+      allocation: allocation === "shared" ? "personal" : allocation,
+      claim_status: allocation === "work" ? f.claim_status || "to_claim" : null,
+      household_id: allocation === "household" ? f.household_id || null : null,
+      household_pot: allocation === "household" ? pot : null,
+      project_id: allocation === "household" ? projectId : null,
+      classifier: "memory",
+      confidence: 0.95,
+    }).eq("user_id", uid).eq("merchant_key", key).eq("status", "pending").neq("id", id);
     await db.from("merchant_rules").upsert({
       user_id: uid,
       merchant_key: key,
