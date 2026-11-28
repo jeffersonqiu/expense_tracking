@@ -93,4 +93,15 @@ update public.transactions set amount = 1 where id = '20000000-0000-0000-0000-00
 reset role;
 select amount = 50 as ok from public.transactions where id = '20000000-0000-0000-0000-000000000001' \gset
 \if :ok \else \echo 'FAIL owner edited wife row amount' \q \endif
+-- Trip allocation needs a trip; deleting a trip keeps its spends as personal.
+do $$ begin
+  update public.transactions set allocation = 'trip' where id = '20000000-0000-0000-0000-000000000002';
+  raise exception 'trip allocation without a trip';
+exception when check_violation then null;
+end $$;
+update public.transactions set allocation = 'trip', trip_id = '30000000-0000-0000-0000-000000000001', trip_bucket = 'hotels'
+ where id = '20000000-0000-0000-0000-000000000002';
+delete from public.trips where id = '30000000-0000-0000-0000-000000000001';
+select allocation = 'personal' and trip_id is null and trip_bucket is null as ok from public.transactions where id = '20000000-0000-0000-0000-000000000002' \gset
+\if :ok \else \echo 'FAIL deleting a trip did not untag its spends' \q \endif
 \echo 'DB TESTS PASSED'

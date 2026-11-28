@@ -125,7 +125,7 @@ export async function ingestEmail(
     const rate = await fxRate(db, d.currency, base, d.occurredAt);
     let allocation = d.allocation ?? "personal";
     if (allocation === "household" && !householdId) allocation = "personal";
-    if (allocation === "shared") allocation = "personal";
+    if (allocation === "shared" || (allocation === "trip" && !d.tripId)) allocation = "personal";
     const isDup = dup.action === "candidate_is_duplicate";
     const row = {
       user_id: userId,

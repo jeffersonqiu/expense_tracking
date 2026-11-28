@@ -55,7 +55,7 @@ export default async function TripPage({ params, searchParams }: { params: Promi
           <div className="t-value">{money(tt.claimable || tt.unsplit, base)}</div></div>
       </div>
       {(t.baseline_daily + t.baseline_transport + t.baseline_hotels + t.baseline_unsplit) > 0 && (
-        <div className="section-foot">Includes totals imported from your spreadsheet{tt.tracked ? `, plus ${tt.tracked} spends tracked here` : ""}.</div>
+        <div className="section-foot">Includes starting totals added before tracking{tt.tracked ? `, plus ${tt.tracked} spends tracked here` : ""}.</div>
       )}
 
       {BUCKETS.map(([key, label]) => {

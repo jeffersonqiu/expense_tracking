@@ -76,7 +76,7 @@ export default async function Summary({ searchParams }: { searchParams: Promise<
         <div className="h-foot">
           {prevPersonal.total > 0
             ? Math.abs(delta) < 0.005 ? "Same as last month" : <>{money(Math.abs(delta), base)} {delta > 0 ? "more" : "less"} than last month</>
-            : "Accepted spends only, your share of shared costs"}
+            : "Accepted spends only, trips tracked separately"}
         </div>
       </section>
 
@@ -98,11 +98,13 @@ export default async function Summary({ searchParams }: { searchParams: Promise<
           <div className="t-value">{money(claimTotal, base)}</div>
           <div className="t-foot">not yet reimbursed</div>
         </Link>
-        <Link href="/balances" className="tile">
-          <div className="t-label"><IconPeople />Owed to you</div>
-          <div className="t-value">{money(owedToMe, base)}</div>
-          <div className="t-foot">from shared spends</div>
-        </Link>
+        {owedToMe > 0 && (
+          <Link href="/balances" className="tile">
+            <div className="t-label"><IconPeople />Owed to you</div>
+            <div className="t-value">{money(owedToMe, base)}</div>
+            <div className="t-foot">from earlier shared spends</div>
+          </Link>
+        )}
         {hh && hh.owner_id === uid && owedToMembers > 0 ? (
           <Link href="/household" className="tile">
             <div className="t-label"><IconHouse />To reimburse</div>

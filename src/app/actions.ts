@@ -12,12 +12,11 @@ import { fromLocalInput } from "@/lib/format";
 import { keywordCategory, merchantKey, displayMerchant, isHouseholdUtility } from "@/lib/pipeline/categorize";
 import { knowledgeFor } from "@/lib/server/knowledge";
 import { learnForUser } from "@/lib/server/learn";
-import { parseTripRows } from "@/lib/server/trips";
 import { nearbyTrips, sgtWhen } from "@/lib/pipeline/process";
 import { makeDecider } from "@/lib/server/ingest";
 
 const KINDS = ["spend", "refund", "investment", "transfer", "income"] as const;
-const ALLOCATIONS = ["personal", "work", "shared", "household"] as const;
+const ALLOCATIONS = ["personal", "work", "trip", "household"] as const;
 const CLAIM = ["to_claim", "submitted", "reimbursed"] as const;
 
 /** Send the user back to a page with a readable message (server actions must not crash the page). */
@@ -29,16 +28,6 @@ function back(path: string, msg: string, kind: "error" | "ok" = "error"): never 
 function str(fd: FormData, k: string): string {
   const v = fd.get(k);
   return typeof v === "string" ? v.trim() : "";
-}
-
-/** "Alice: 12.50" per line -> shares. */
-function parseShares(text: string): { person_name: string; amount: number }[] {
-  return text
-    .split(/\n/)
-    .map((l) => /^(.+?)[:=]\s*([\d.,]+)\s*$/.exec(l.trim()))
-    .filter((m): m is RegExpExecArray => !!m)
-    .map((m) => ({ person_name: m[1]!.trim().slice(0, 60), amount: Number(m[2]!.replace(/,/g, "")) }))
-    .filter((s) => s.amount > 0);
 }
 
 const ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -60,18 +49,18 @@ const TxnForm = z.object({
   household_pot: z.enum(["allowance", "bills", "project"]).optional().or(z.literal("")),
   project_id: z.string().regex(ID).optional().or(z.literal("")).or(z.literal("__new")),
   new_project_name: z.string().trim().max(80).optional(),
-  trip_id: optId,
+  trip_id: z.string().regex(ID).optional().or(z.literal("")).or(z.literal("__new")),
+  new_trip_name: z.string().trim().max(80).optional(),
   trip_bucket: z.enum(["daily", "transport", "hotels"]).optional().or(z.literal("")),
   description: z.string().transform((v) => v.slice(0, 500)).optional(),
-  shares: z.string().max(2000).optional(),
   return_to: z.string().optional(),
 });
 
 const FIELD_LABELS: Record<string, string> = {
   amount: "Amount", currency: "Currency (3 letters, e.g. SGD)", kind: "Type", merchant: "Merchant",
   category_id: "Category", allocation: "Allocation", claim_status: "Claim status", household_id: "Household",
-  household_pot: "Household pot", project_id: "Project", new_project_name: "Project name", trip_id: "Trip", trip_bucket: "Trip bucket",
-  occurred_at: "Date", shares: "Who owes you", id: "Transaction", decision: "Action",
+  household_pot: "Household pot", project_id: "Project", new_project_name: "Project name", trip_id: "Trip", new_trip_name: "Trip name", trip_bucket: "Trip bucket",
+  occurred_at: "Date", id: "Transaction", decision: "Action",
 };
 
 /** Accept / reject / save one transaction (also creates manual ones when id is empty). */
@@ -94,7 +83,19 @@ export async function saveTransaction(fd: FormData) {
 
   if (allocation === "household" && !f.household_id) back(returnTo, "Choose a household (create one in Settings first).");
 
-  const tripId = f.trip_id && trips.some((t) => t.id === f.trip_id) ? f.trip_id : null;
+  // Trip: required for a Trip spend, optional for Work (business trips). A new trip can start right from the card.
+  let tripId: string | null = null;
+  if (allocation === "trip" || allocation === "work") {
+    if (f.trip_id === "__new" && f.new_trip_name) {
+      const nt = await db.from("trips").insert({ user_id: uid, name: f.new_trip_name, start_date: occurred.slice(0, 10) }).select("id").single();
+      if (nt.error) {
+        console.error("create trip", nt.error);
+        back(returnTo, nt.error.code === "23505" ? "A trip with that name already starts that day: pick it from the list." : "Couldn't create that trip.");
+      }
+      tripId = nt.data.id;
+    } else if (f.trip_id && trips.some((t) => t.id === f.trip_id)) tripId = f.trip_id;
+  }
+  if (allocation === "trip" && !tripId && f.decision !== "reject") back(returnTo, "Pick the trip (or name a new one).");
 
   // Household pot and project (a new project can be started right from the card)
   const pot = allocation === "household" ? f.household_pot || "allowance" : null;
@@ -131,6 +132,7 @@ export async function saveTransaction(fd: FormData) {
     project_id: projectId,
     trip_id: tripId,
     trip_bucket: tripId ? f.trip_bucket || "daily" : null,
+    ...(allocation === "trip" && !tripId ? { allocation: "personal" } : {}),
     description: f.description || null,
     needs_manual_amount: false,
     status: f.decision === "reject" ? "rejected" : f.decision === "accept" ? "confirmed" : undefined,
@@ -164,13 +166,6 @@ export async function saveTransaction(fd: FormData) {
       back(returnTo, "Could not save that transaction.");
     }
     id = ins.data.id;
-  }
-
-  // Shares for "shared, I paid first"
-  await db.from("shared_shares").delete().eq("transaction_id", id).eq("user_id", uid).is("settled_at", null);
-  if (allocation === "shared" && f.shares) {
-    const shares = parseShares(f.shares).map((s) => ({ ...s, transaction_id: id, user_id: uid }));
-    if (shares.length) await db.from("shared_shares").insert(shares);
   }
 
   // Log the decision for the learning loop (what was suggested vs what you chose).
@@ -449,7 +444,8 @@ export async function suggestCategories() {
       }, categories.map((c) => c.name));
       const catId = d.category ? byName.get(d.category) : undefined;
       if (!catId) return;
-      const allocation = d.allocation === "household" && !hasHousehold ? "personal" : d.allocation ?? "personal";
+      const base = d.allocation === "household" && !hasHousehold ? "personal" : d.allocation ?? "personal";
+      const allocation = d.trip && base === "personal" ? "trip" : base;
       const pot = allocation === "household" ? (d.pot === "project" ? "allowance" : d.pot ?? "allowance") : null;
       const suggestion = {
         category: d.category, allocation, pot, source: ai.name, trip: d.trip ?? null, bucket: d.trip ? d.bucket ?? "daily" : null,
@@ -581,24 +577,5 @@ export async function deleteTrip(fd: FormData) {
   const { db, uid } = await getContext();
   await db.from("trips").delete().eq("id", str(fd, "id")).eq("user_id", uid);
   revalidatePath("/", "layout");
-  back("/trips", "Trip deleted. Its spends are kept, just no longer tagged to a trip.", "ok");
-}
-
-/** Paste rows from the Travel Collation sheet (or the prepared file) to bring in past trips. */
-export async function importTrips(fd: FormData) {
-  const { db, uid } = await getContext();
-  const rows = parseTripRows(str(fd, "rows").slice(0, 100_000));
-  if (rows.length === 0) back("/trips/import", "No trips found. Each line needs a month (e.g. \"Oct 2026\") and a trip name.");
-  let n = 0;
-  for (const r of rows) {
-    const { error } = await db.from("trips").upsert({
-      user_id: uid, name: r.name, start_date: r.start,
-      baseline_daily: r.daily, baseline_transport: r.transport, baseline_hotels: r.hotels, baseline_unsplit: r.unsplit,
-      ...(r.links ? { links: r.links } : {}),
-    }, { onConflict: "user_id,name,start_date" });
-    if (error) console.error("importTrips", r.name, error);
-    else n++;
-  }
-  revalidatePath("/", "layout");
-  back("/trips", `Imported ${n} of ${rows.length} trips.`, n ? "ok" : "error");
+  back("/trips", "Trip deleted. Its spends are kept and moved back to Personal (work spends stay Work).", "ok");
 }

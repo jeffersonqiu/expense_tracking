@@ -147,6 +147,19 @@ describe("processEmail", () => {
     expect(seen!.facts).toEqual(["Weekday lunch PayNow to people is usually Food"]);
   });
 
+  it("a personal spend the AI places in a trip becomes a Trip spend; work stays work", async () => {
+    const mk = (allocation: "personal" | "work"): Decider => ({
+      name: "fake",
+      extract: async () => ({ isTransaction: false, confidence: 0 }),
+      decide: async () => ({ ...NO_DECISION, category: "Food", categoryConfidence: 0.9, allocation, allocationConfidence: 0.8, trip: "bkk", tripConfidence: 0.8, bucket: "daily" }),
+    });
+    const trips = [{ id: "bkk", name: "Bangkok", start: "2026-11-10", end: "2026-11-20" }];
+    const personal = await processEmail(F.uobPaynowIndividual, { ...ctx(mk("personal")), trips });
+    expect(personal.drafts[0]).toMatchObject({ allocation: "trip", tripId: "bkk", tripBucket: "daily" });
+    const work = await processEmail(F.uobPaynowIndividual, { ...ctx(mk("work")), trips });
+    expect(work.drafts[0]).toMatchObject({ allocation: "work", tripId: "bkk" });
+  });
+
   it("without AI, keyword rules give a fallback suggestion", async () => {
     const out = await processEmail(F.tadaReceipt, ctx());
     expect(out.drafts[0]!.suggestion).toMatchObject({ category: "Transport", allocation: "personal", source: "rules" });

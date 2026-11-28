@@ -44,7 +44,8 @@ export interface CategoryInput {
   paymentMethod?: string;
 }
 
-export type Allocation = "personal" | "work" | "shared" | "household";
+/** What the AI chooses; "trip" is set when it places the spend in a trip. */
+export type Allocation = "personal" | "work" | "household";
 export type Pot = "allowance" | "bills" | "project";
 
 /** A past review decision shown to the model as an example. */
@@ -101,8 +102,7 @@ export interface Decision {
 
 export const ALLOCATION_GUIDE: Record<Allocation, string> = {
   personal: "The user's own spending.",
-  work: "Paid for work; the user will claim it back from their company.",
-  shared: "The user paid for a group and others owe them their share.",
+  work: "Paid for work; the user will claim it back from their company (also on work trips).",
   household: "Home spending funded by the user: groceries/daily needs, utility bills, or home projects.",
 };
 

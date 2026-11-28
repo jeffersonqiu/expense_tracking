@@ -60,7 +60,7 @@ describe("JevDecider", () => {
     expect(d).toMatchObject({ category: "Hotels", categoryConfidence: 0.7, allocation: "work", allocationConfidence: 0.82, pot: "bills", potConfidence: 0.4, trip: null });
     const body = calls[0]!.body;
     expect(Object.keys(body.questions)).toEqual(["category", "allocation", "pot"]);
-    expect(Object.keys(body.questions.allocation.criteria)).toEqual(["personal", "work", "shared", "household"]);
+    expect(Object.keys(body.questions.allocation.criteria)).toEqual(["personal", "work", "household"]);
     expect(body.state.what_we_know_about_this_user).toEqual(["Hotels in Jakarta in Nov 2026 were work trips"]);
     expect(body.state.similar_past_decisions[0].correction).toContain("Travel -> Hotels");
 

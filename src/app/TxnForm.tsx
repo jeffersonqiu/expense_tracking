@@ -36,7 +36,7 @@ export interface TxnRow {
 const ALLOCATIONS = [
   { value: "personal", label: "Personal" },
   { value: "work", label: "Work" },
-  { value: "shared", label: "Shared" },
+  { value: "trip", label: "Trip" },
   { value: "household", label: "Household" },
 ];
 
@@ -83,7 +83,6 @@ export function TxnForm({
   returnTo: string;
   mode: "review" | "edit" | "new";
 }) {
-  const shares = (txn?.shared_shares ?? []).filter((s) => !s.settled_at).map((s) => `${s.person_name}: ${s.amount}`).join("\n");
   const personHint = txn?.counterparty_type === "individual";
   const amountSigned = txn ? (txn.kind === "refund" ? -Number(txn.amount) : Number(txn.amount)) : 0;
   const showConv = txn && txn.base_currency && txn.currency !== txn.base_currency;
@@ -93,7 +92,8 @@ export function TxnForm({
   // A utility that arrived as Personal (nothing remembered yet) is suggested as a household bill.
   const utilityHint = !!txn && txn.status === "pending" && txn.allocation === "personal" && !txn.suggestion
     && households.length > 0 && isHouseholdUtility(txn.merchant_raw ?? txn.merchant ?? "");
-  const allocation = utilityHint ? "household" : txn?.allocation ?? "personal";
+  // "Shared" is retired: old shared spends show as Personal (their shares are kept in Balances).
+  const allocation = utilityHint ? "household" : txn?.allocation === "shared" ? "personal" : txn?.allocation ?? "personal";
   const pot = utilityHint ? "bills" : txn?.household_pot ?? defaultPot(catName, openProjects.length > 0);
 
   return (
@@ -157,29 +157,24 @@ export function TxnForm({
           <input name="new_project_name" placeholder="New project name, e.g. Renovation 2026" maxLength={80} className="when-newproject" style={{ marginTop: 8 }} aria-label="New project name" />
         </div>
       </div>
-      <div className="block when-shared">
-        <label className="field"><span>Who owes you (one per line, e.g. &ldquo;Alex: 12.50&rdquo;)</span>
-          <textarea name="shares" rows={2} defaultValue={shares} placeholder="Alex: 12.50" />
+      <div className="block when-trip-alloc">
+        <label className="field"><span>Trip</span>
+          <select name="trip_id" defaultValue={txn?.trip_id ?? ""}>
+            <option value="">{trips.length ? "Choose a trip…" : "No trips yet"}</option>
+            {tripOptions(trips, txn?.occurred_at, txn?.trip_id).map((t) => (
+              <option key={t.id} value={t.id}>{t.name}</option>
+            ))}
+            <option value="__new">+ New trip…</option>
+          </select>
         </label>
-      </div>
-
-      {trips.length > 0 && (
-        <div className="block">
-          <label className="field"><span>Trip</span>
-            <select name="trip_id" defaultValue={txn?.trip_id ?? ""}>
-              <option value="">Not part of a trip</option>
-              {tripOptions(trips, txn?.occurred_at, txn?.trip_id).map((t) => (
-                <option key={t.id} value={t.id}>{t.name}</option>
-              ))}
-            </select>
-          </label>
-          <div className="when-trip" style={{ marginTop: 10 }}>
-            <Segmented name="trip_bucket" value={txn?.trip_bucket ?? "daily"} options={[
-              { value: "daily", label: "Daily" }, { value: "transport", label: "Transport" }, { value: "hotels", label: "Hotels" },
-            ]} />
-          </div>
+        <input name="new_trip_name" placeholder="Trip name, e.g. Italy" maxLength={80} className="when-newtrip" style={{ marginTop: 8 }} aria-label="New trip name" />
+        <div className="when-trip" style={{ marginTop: 10 }}>
+          <Segmented name="trip_bucket" value={txn?.trip_bucket ?? "daily"} options={[
+            { value: "daily", label: "Daily" }, { value: "transport", label: "Transport" }, { value: "hotels", label: "Hotels" },
+          ]} />
         </div>
-      )}
+        <div className="small faint when-work-only" style={{ marginTop: 6 }}>Optional for work: tag a business trip</div>
+      </div>
 
       <div className="block">
         <div className="lbl" style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>

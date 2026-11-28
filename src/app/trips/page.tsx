@@ -22,9 +22,7 @@ export default async function TripsPage({ searchParams }: { searchParams: Promis
 
   return (
     <Shell active="trips" pending={pendingCount}>
-      <Header title="Trips" sub="Travel budget, tracked separately from everyday spending">
-        <Link href="/trips/import" className="btn">Import</Link>
-      </Header>
+      <Header title="Trips" sub="Travel spending, tracked separately from everyday spending" />
       <Flash error={sp.error} ok={sp.ok} />
 
       <div className="seg links" style={{ maxWidth: 360, marginBottom: 14 }}>

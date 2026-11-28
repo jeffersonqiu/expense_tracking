@@ -61,34 +61,3 @@ export function tripDates(t: Trip): string {
   if (!t.end_date) return new Intl.DateTimeFormat("en-SG", { month: "short", year: "numeric", timeZone: "UTC" }).format(new Date(t.start_date + "T00:00:00Z"));
   return `${f(t.start_date, false)} – ${f(t.end_date, true)}`;
 }
-
-/** Parse pasted rows (from the Travel Collation sheet or the prepared import file). */
-export interface ImportRow { name: string; start: string; daily: number; transport: number; hotels: number; unsplit: number; links: string | null; remarks: string | null }
-
-const MONTHS: Record<string, string> = { jan: "01", feb: "02", mar: "03", apr: "04", may: "05", jun: "06", jul: "07", aug: "08", sep: "09", oct: "10", nov: "11", dec: "12" };
-
-export function parseTripRows(text: string): ImportRow[] {
-  const rows: ImportRow[] = [];
-  for (const line of text.split(/\r?\n/)) {
-    const cells = line.split(/\t| \| /).map((c) => c.trim());
-    const mi = cells.findIndex((c) => /^(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]* \d{4}$/i.test(c));
-    if (mi < 0) continue;
-    const [mon, yr] = cells[mi]!.split(" ");
-    const start = `${yr}-${MONTHS[mon!.slice(0, 3).toLowerCase()]}-01`;
-    const rest = cells.slice(mi + 1).filter((c) => !/^\d{4}$/.test(c)); // drop the sheet's separate "Year" column
-    const name = rest.find((c) => c && !/^(sgd|s\$|\$)?\s?[\d,]+(\.\d+)?$/i.test(c) && !/^https?:/i.test(c) && !/^(sgd|s\$|\$)\s?[\d,.]*$/i.test(c));
-    if (!name) continue;
-    const money = rest.slice(rest.indexOf(name) + 1)
-      .filter((c) => /^(sgd|s\$|\$)?\s?-?[\d,]*(\.\d+)?$/i.test(c) && /\d/.test(c))
-      .map((c) => Number(c.replace(/sgd|s\$|\$|,|\s/gi, "")) || 0);
-    const [daily = 0, transport = 0, hotels = 0, total] = money;
-    const sum = daily + transport + hotels;
-    const links = rest.filter((c) => /^https?:\/\//i.test(c)).join("\n") || null;
-    rows.push({
-      name: name.slice(0, 80), start, daily, transport, hotels,
-      unsplit: total != null && total - sum > 0.01 ? Math.round((total - sum) * 100) / 100 : 0,
-      links, remarks: null,
-    });
-  }
-  return rows;
-}

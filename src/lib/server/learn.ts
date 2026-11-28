@@ -17,7 +17,7 @@ const MAX_DECISIONS = 250;
 const MAX_FACTS = 300;
 const EST_MAX_COST = 0.2; // skip if less budget than this is left
 
-const ALLOC = ["personal", "work", "shared", "household"];
+const ALLOC = ["personal", "work", "trip", "household"];
 const POTS = ["allowance", "bills", "project"];
 const SUBJECTS = ["merchant", "brand", "person", "place", "trip", "pattern", "lesson"];
 
