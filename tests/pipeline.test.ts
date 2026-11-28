@@ -216,6 +216,14 @@ describe("hotels", () => {
   });
 });
 
+describe("giving", () => {
+  it("files donations and red packets under Giving", () => {
+    expect(keywordCategory("GIVING.SG DONATION")).toBe("Giving");
+    expect(keywordCategory("Community Chest")).toBe("Giving");
+    expect(keywordCategory("Willing Hearts")).toBe("Giving");
+  });
+});
+
 describe("trips", () => {
   it("offers only trips near the spend date and files spends inside a trip by date", async () => {
     const { nearbyTrips, tripByDate } = await import("../src/lib/pipeline/process");

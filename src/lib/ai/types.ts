@@ -100,6 +100,13 @@ export interface Decision {
   bucket?: TripBucket | null;
 }
 
+/** What a category means when its name alone is ambiguous (shown to the AI). */
+export const CATEGORY_HINTS: Record<string, string> = {
+  Giving: "Money given away: regular allowance to parents or family, gifts, donations, charity, religious offerings, red packets.",
+  Hotels: "Places to stay: hotels, Airbnb, resorts, hostels.",
+  Travel: "Getting to and between destinations: flights, trains between cities, travel bookings.",
+};
+
 export const ALLOCATION_GUIDE: Record<Allocation, string> = {
   personal: "The user's own spending.",
   work: "Paid for work; the user will claim it back from their company (also on work trips).",

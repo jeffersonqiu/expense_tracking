@@ -1,5 +1,5 @@
 import type { IncomingEmail, Kind } from "../pipeline/types";
-import { ALLOCATION_GUIDE, BUCKET_GUIDE, POT_GUIDE, decisionState, type TripBucket, type Allocation, type CostSink, type Decider, type Decision, type DecisionInput, type Extracted, type Pot } from "./types";
+import { CATEGORY_HINTS, ALLOCATION_GUIDE, BUCKET_GUIDE, POT_GUIDE, decisionState, type TripBucket, type Allocation, type CostSink, type Decider, type Decision, type DecisionInput, type Extracted, type Pot } from "./types";
 
 /**
  * Jev (TypeSafe System One decision model) via OpenRouter's Decisions API.
@@ -93,7 +93,7 @@ export class JevDecider implements Decider {
 
   async decide(input: DecisionInput, categories: string[]): Promise<Decision> {
     const criteria: Record<string, string> = {};
-    for (const c of categories) criteria[c] = c;
+    for (const c of categories) criteria[c] = CATEGORY_HINTS[c] ? `${c}: ${CATEGORY_HINTS[c]}` : c;
     const questions: Record<string, unknown> = {
       category: {
         type: "choice",

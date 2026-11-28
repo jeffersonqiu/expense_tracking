@@ -1,5 +1,5 @@
 import type { IncomingEmail } from "../pipeline/types";
-import { ALLOCATION_GUIDE, BUCKET_GUIDE, POT_GUIDE, decisionState, type TripBucket, type Allocation, type CostSink, type Decider, type Decision, type DecisionInput, type Extracted, type Pot } from "./types";
+import { CATEGORY_HINTS, ALLOCATION_GUIDE, BUCKET_GUIDE, POT_GUIDE, decisionState, type TripBucket, type Allocation, type CostSink, type Decider, type Decision, type DecisionInput, type Extracted, type Pot } from "./types";
 
 const ENDPOINT = "https://openrouter.ai/api/v1/chat/completions";
 
@@ -149,6 +149,7 @@ export class OpenRouterHaiku implements Decider {
     const user = [
       "Decide how this user files this spend. Follow what we know about the user and their similar past decisions;",
       "corrections show what the AI previously got wrong. The same merchant can be filed differently depending on context.",
+      `Category notes: ${JSON.stringify(Object.fromEntries(categories.filter((c) => CATEGORY_HINTS[c]).map((c) => [c, CATEGORY_HINTS[c]])))}`,
       `Allocations: ${JSON.stringify(ALLOCATION_GUIDE)}`,
       `Household pots: ${JSON.stringify(POT_GUIDE)}`,
       `Trip buckets: ${JSON.stringify(BUCKET_GUIDE)}. Trips (by id): ${JSON.stringify((input.trips ?? []).map((t) => ({ id: t.id, name: t.name, type: t.kind ?? "personal", from: t.start, to: t.end })))}`,
