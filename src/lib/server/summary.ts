@@ -25,12 +25,13 @@ export function myShare(r: SummaryRow): number {
   return Math.max(0, total - others);
 }
 
-export async function personalMonth(db: SupabaseClient, uid: string, start: string, end: string) {
+/** Personal spending for a period. Trips are excluded, and so is Giving (it has its own budget). */
+export async function personalMonth(db: SupabaseClient, uid: string, start: string, end: string, givingCategoryId?: string | null) {
   const { data } = await db.from("transactions")
     .select("id, user_id, amount, fx_rate, base_amount, kind, allocation, category_id, household_id, reimbursed_at, shared_shares(amount, settled_at)")
     .eq("user_id", uid).eq("status", "confirmed").in("allocation", ["personal", "shared"]).is("trip_id", null)
     .gte("occurred_at", start).lt("occurred_at", end);
-  const rows = (data ?? []) as SummaryRow[];
+  const rows = ((data ?? []) as SummaryRow[]).filter((r) => !givingCategoryId || r.category_id !== givingCategoryId);
   const byCategory = new Map<string | null, number>();
   let total = 0;
   let investments = 0;
@@ -103,4 +104,17 @@ export async function projectTotals(db: SupabaseClient, householdId: string) {
   const totals = new Map<string, number>();
   for (const r of data ?? []) totals.set(r.project_id as string, (totals.get(r.project_id as string) ?? 0) + spendValue(r.kind, r.base_amount == null ? null : Number(r.base_amount)));
   return totals;
+}
+
+export interface GivingRow { id: string; occurred_at: string; merchant: string | null; amount: number | string; currency: string; base_amount: number | string | null; kind: string; allocation: string; fx_rate: number | string | null; shared_shares?: { amount: number | string; settled_at: string | null }[] }
+
+/** Giving (allowance to family, gifts, donations) in a period: everyday spends filed under Giving. */
+export async function givingPeriod(db: SupabaseClient, uid: string, categoryId: string | null | undefined, start: string, end: string) {
+  if (!categoryId) return { total: 0, rows: [] as GivingRow[] };
+  const { data } = await db.from("transactions")
+    .select("id, user_id, occurred_at, merchant, amount, currency, base_amount, fx_rate, kind, allocation, category_id, household_id, reimbursed_at, shared_shares(amount, settled_at)")
+    .eq("user_id", uid).eq("status", "confirmed").eq("category_id", categoryId).in("allocation", ["personal", "shared"]).is("trip_id", null)
+    .gte("occurred_at", start).lt("occurred_at", end).order("occurred_at", { ascending: false });
+  const rows = (data ?? []) as (GivingRow & SummaryRow)[];
+  return { total: rows.reduce((s, r) => s + myShare(r), 0), rows };
 }

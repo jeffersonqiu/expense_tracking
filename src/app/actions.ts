@@ -633,3 +633,18 @@ export async function deleteTrip(fd: FormData) {
   revalidatePath("/", "layout");
   back("/trips", "Trip deleted. Its spends are kept and moved back to Personal (work spends stay Work).", "ok");
 }
+
+/** Monthly Giving budget (allowance to family, gifts, donations). Empty clears it. */
+export async function saveGivingBudget(fd: FormData) {
+  const { db, uid } = await getContext();
+  const raw = str(fd, "budget").replace(/,/g, "");
+  const budget = raw ? Number(raw) : null;
+  if (budget != null && (!Number.isFinite(budget) || budget < 0 || budget > 1e9)) back("/giving", "Budget must be a positive number.");
+  const { error } = await db.from("profiles").update({ giving_monthly_budget: budget }).eq("id", uid);
+  if (error) {
+    console.error("saveGivingBudget", error);
+    back("/giving", "Couldn't save the budget.");
+  }
+  revalidatePath("/", "layout");
+  back("/giving", budget ? "Giving budget saved." : "Giving budget cleared.", "ok");
+}

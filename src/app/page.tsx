@@ -1,10 +1,10 @@
 import Link from "next/link";
 import { getContext, monthRange, shiftMonth } from "@/lib/server/context";
-import { householdMonth, personalMonth } from "@/lib/server/summary";
+import { givingPeriod, householdMonth, personalMonth } from "@/lib/server/summary";
 import { money, sgtDate } from "@/lib/format";
 import { Shell, Header } from "./ui/Shell";
 import { MonthStepper } from "./ui/MonthStepper";
-import { IconAlert, IconBriefcase, IconChart, IconChevronRight, IconGear, IconHouse, IconInbox, IconPeople, IconPlane } from "./ui/Icons";
+import { IconAlert, IconBriefcase, IconChart, IconChevronRight, IconGear, IconHouse, IconInbox, IconHeart, IconPeople, IconPlane } from "./ui/Icons";
 import { tripTotals, sumTotals } from "@/lib/server/trips";
 
 export default async function Summary({ searchParams }: { searchParams: Promise<{ m?: string }> }) {
@@ -14,10 +14,13 @@ export default async function Summary({ searchParams }: { searchParams: Promise<
   const { ym, start, end } = monthRange(sp.m);
   const prev = monthRange(shiftMonth(ym, -1));
   const hh = households[0];
+  const givingId = categories.find((c) => c.name === "Giving")?.id ?? null;
+  const givingBudget = profile?.giving_monthly_budget == null ? null : Number(profile.giving_monthly_budget);
+  const giving = await givingPeriod(db, uid, givingId, start, end);
 
   const [personal, prevPersonal, household, heartbeat, claims, shares, owed, recent] = await Promise.all([
-    personalMonth(db, uid, start, end),
-    personalMonth(db, uid, prev.start, prev.end),
+    personalMonth(db, uid, start, end, givingId),
+    personalMonth(db, uid, prev.start, prev.end, givingId),
     hh ? householdMonth(db, hh.id, start, end) : Promise.resolve(null),
     db.from("script_heartbeats").select("last_seen_at").eq("user_id", uid).maybeSingle(),
     db.from("transactions").select("base_amount").eq("user_id", uid).eq("allocation", "work").eq("status", "confirmed").in("claim_status", ["to_claim", "submitted"]),
@@ -76,7 +79,7 @@ export default async function Summary({ searchParams }: { searchParams: Promise<
         <div className="h-foot">
           {prevPersonal.total > 0
             ? Math.abs(delta) < 0.005 ? "Same as last month" : <>{money(Math.abs(delta), base)} {delta > 0 ? "more" : "less"} than last month</>
-            : "Accepted spends only, trips tracked separately"}
+            : "Accepted spends only; trips and giving tracked separately"}
         </div>
       </section>
 
@@ -88,6 +91,16 @@ export default async function Summary({ searchParams }: { searchParams: Promise<
             <div className="t-foot">{spent > budget ? <span className="bad">over budget</span> : `left of ${money(budget, hh.currency)}`}</div>
           </Link>
         )}
+        <Link href={`/giving?m=${ym}`} className="tile">
+          <div className="t-label"><IconHeart />Giving</div>
+          <div className="t-value">{money(giving.total, base)}</div>
+          {givingBudget != null && givingBudget > 0 ? (
+            <>
+              <div className="bar-track" style={{ margin: "6px 0 4px" }}><div className="bar-fill" style={{ width: `${Math.min(100, (giving.total / givingBudget) * 100)}%`, background: giving.total > givingBudget ? "var(--bad)" : undefined }} /></div>
+              <div className="t-foot">{giving.total > givingBudget ? <span className="bad">{money(giving.total - givingBudget, base)} over</span> : `${money(givingBudget - giving.total, base)} left`} of {money(givingBudget, base)}</div>
+            </>
+          ) : <div className="t-foot">family, gifts, donations · set a budget</div>}
+        </Link>
         <Link href={`/trips?y=${year}`} className="tile">
           <div className="t-label"><IconPlane />Trips {year}</div>
           <div className="t-value">{money(tripYear.personal.total, base)}</div>

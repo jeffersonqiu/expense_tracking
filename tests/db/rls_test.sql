@@ -56,6 +56,14 @@ exception when raise_exception then
   if sqlerrm not like '%another user%' then raise; end if;
 end $$;
 do $$ begin
+  update public.profiles set is_owner = true where id = '00000000-0000-0000-0000-00000000000b';
+  raise exception 'wife made herself owner';
+exception when insufficient_privilege then null;
+end $$;
+update public.profiles set giving_monthly_budget = 300 where id = '00000000-0000-0000-0000-00000000000b';
+select giving_monthly_budget = 300 as ok from public.profiles where id = '00000000-0000-0000-0000-00000000000b' \gset
+\if :ok \else \echo 'FAIL could not set own giving budget' \q \endif
+do $$ begin
   insert into public.knowledge_facts(user_id, subject_type, subject, statement) values ('00000000-0000-0000-0000-00000000000b', 'merchant', 'x', 'self-written');
   raise exception 'users can write facts directly';
 exception when insufficient_privilege then null;

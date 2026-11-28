@@ -19,7 +19,7 @@ export async function getContext() {
   const uid = auth.user.id;
 
   const [profile, categories, households, pending, projects, trips] = await Promise.all([
-    db.from("profiles").select("id, email, display_name, base_currency, is_owner").eq("id", uid).single(),
+    db.from("profiles").select("id, email, display_name, base_currency, is_owner, giving_monthly_budget").eq("id", uid).single(),
     db.from("categories").select("id, name").eq("user_id", uid).order("sort_order"),
     db.from("households").select("id, name, owner_id, monthly_budget, currency"),
     db.from("transactions").select("id", { count: "exact", head: true }).eq("user_id", uid).eq("status", "pending").is("duplicate_of", null),
@@ -30,7 +30,7 @@ export async function getContext() {
   return {
     db,
     uid,
-    profile: profile.data as { id: string; email: string; display_name: string | null; base_currency: string; is_owner: boolean } | null,
+    profile: profile.data as { id: string; email: string; display_name: string | null; base_currency: string; is_owner: boolean; giving_monthly_budget: number | string | null } | null,
     categories: (categories.data ?? []) as Category[],
     households: ((households.data ?? []) as Household[]).map((h) => ({ ...h, monthly_budget: Number(h.monthly_budget) })),
     pendingCount: pending.count ?? 0,
@@ -63,4 +63,9 @@ export function defaultPot(categoryName: string | null | undefined, hasOpenProje
   if (categoryName === "Bills" || categoryName === "Subscription") return "bills";
   if (categoryName === "House" && hasOpenProject) return "project";
   return "allowance";
+}
+
+/** Start of the year (Singapore time) for a "YYYY-MM" month, as ISO. */
+export function yearStart(ym: string): string {
+  return new Date(Date.UTC(Number(ym.slice(0, 4)), 0, 1, -8)).toISOString();
 }

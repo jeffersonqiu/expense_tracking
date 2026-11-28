@@ -1,7 +1,7 @@
 import Link from "next/link";
-import { IconGear, IconHouse, IconInbox, IconList, IconPeople, IconPlane, IconSummary, IconWallet } from "./Icons";
+import { IconGear, IconHouse, IconInbox, IconList, IconHeart, IconPeople, IconPlane, IconSummary, IconWallet } from "./Icons";
 
-export type Section = "summary" | "review" | "activity" | "household" | "trips" | "balances" | "settings";
+export type Section = "summary" | "review" | "activity" | "household" | "trips" | "giving" | "balances" | "settings";
 
 const NAV: { id: Section; href: string; label: string; Icon: (p: { className?: string }) => React.ReactNode; tab: boolean }[] = [
   { id: "summary", href: "/", label: "Summary", Icon: IconSummary, tab: true },
@@ -9,6 +9,7 @@ const NAV: { id: Section; href: string; label: string; Icon: (p: { className?: s
   { id: "activity", href: "/transactions", label: "Activity", Icon: IconList, tab: true },
   { id: "household", href: "/household", label: "Household", Icon: IconHouse, tab: true },
   { id: "trips", href: "/trips", label: "Trips", Icon: IconPlane, tab: true },
+  { id: "giving", href: "/giving", label: "Giving", Icon: IconHeart, tab: false },
   { id: "balances", href: "/balances", label: "Balances", Icon: IconPeople, tab: false },
   { id: "settings", href: "/settings", label: "Settings", Icon: IconGear, tab: false },
 ];
