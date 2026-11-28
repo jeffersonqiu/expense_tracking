@@ -407,3 +407,16 @@ export async function suggestCategories() {
   const note = !ai ? " AI is off: check Settings → AI and cost." : aiFailed ? " Some AI calls failed or hit the monthly cap." : "";
   back("/review", `Suggested categories for ${filled} of ${rows.length} spends.${note}`, filled ? "ok" : "error");
 }
+
+/** Put an accepted/rejected spend back into the review queue. */
+export async function undoReview(fd: FormData) {
+  const { db, uid } = await getContext();
+  const id = str(fd, "id");
+  const { data, error } = await db.from("transactions")
+    .update({ status: "pending", reviewed_at: null })
+    .eq("id", id).eq("user_id", uid).in("status", ["confirmed", "rejected"]).is("duplicate_of", null)
+    .select("merchant").maybeSingle();
+  if (error || !data) back("/review", "Couldn't undo that one.");
+  revalidatePath("/", "layout");
+  back("/review", `${data.merchant ?? "Spend"} is back in Review.`, "ok");
+}
