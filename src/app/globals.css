@@ -382,3 +382,31 @@ form:has(input[name="allocation"][value="household"]:checked) .when-household { 
 form:has(input[name="household_pot"][value="project"]:checked) .when-project { display: block !important; }
 form:has(select[name="project_id"] option[value="__new"]:checked) .when-newproject { display: block !important; }
 .pill svg { width: 12px; height: 12px; }
+
+/* Toast: floats above the tab bar, never takes layout space */
+.toast {
+  position: fixed; left: 50%; transform: translateX(-50%); z-index: 30;
+  bottom: 24px; width: max-content; max-width: min(92vw, 440px);
+  display: flex; align-items: center; gap: 14px;
+  padding: 10px 10px 10px 16px; border-radius: 14px;
+  background: rgba(28, 28, 30, 0.92); color: #fff;
+  backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18); font-size: 15px;
+  transition: opacity 0.3s ease, transform 0.3s ease;
+  animation: toast-in 0.25s ease;
+}
+.toast.gone { opacity: 0; transform: translate(-50%, 12px); pointer-events: none; }
+.toast-msg { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.toast form { margin: 0; flex: none; }
+.toast-undo { appearance: none; border: 0; background: none; color: #64b5ff; font: inherit; font-weight: 600; padding: 6px 8px; min-height: 36px; cursor: pointer; }
+@keyframes toast-in { from { opacity: 0; transform: translate(-50%, 12px); } to { opacity: 1; transform: translate(-50%, 0); } }
+@media (max-width: 860px) { .toast { bottom: calc(76px + env(safe-area-inset-bottom)); } }
+
+/* "Recent" pop-over next to the Review title */
+.recent { position: static; }
+.header .toolbar { position: relative; }
+.recent > summary { list-style: none; gap: 4px; }
+.recent > summary::-webkit-details-marker { display: none; }
+.recent > summary svg { width: 18px; height: 18px; }
+.recent-pop { position: absolute; right: 0; top: calc(100% + 6px); width: min(86vw, 340px); z-index: 25; box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18); }
+@media (max-width: 860px) { .recent-pop { left: 0; right: auto; width: min(calc(100vw - 32px), 360px); } }

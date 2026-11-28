@@ -177,6 +177,8 @@ export async function saveTransaction(fd: FormData) {
   }
 
   revalidatePath("/", "layout");
+  // From the review queue: come back with a short-lived Undo toast for this decision.
+  if (returnTo === "/review" && f.decision !== "save") redirect(`/review?done=${id}`);
   if (f.return_to?.startsWith("/") && !f.return_to.startsWith("//")) redirect(f.return_to);
 }
 
