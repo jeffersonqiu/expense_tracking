@@ -95,7 +95,7 @@ export function ReviewQueue({ items, recent, empty }: { items: QueueItem[]; rece
   return (
     <>
       <div className="queue-bar">
-        <span className="small muted swipe-tip-inline">{visible.length ? "Swipe right to accept, left to reject." : ""}</span>
+        <span />
         {history.length > 0 && (
           <button type="button" className="btn queue-recent" onClick={() => setSheet(true)} aria-haspopup="dialog">
             <span aria-hidden="true">↺</span> Undo

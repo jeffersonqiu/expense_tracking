@@ -54,13 +54,10 @@ export default async function TripPage({ params, searchParams }: { params: Promi
         <section className="tile">
           <div className="t-label">Business</div>
           <div className="t-value">{money(tt.business.total, base)}</div>
-          <div className="t-foot">{t.kind === "business" ? "work spends, claimable" : "personal trip: no work spends"}</div>
+          {t.kind === "business" && <div className="t-foot">claimable</div>}
         </section>
       </div>
       <div style={{ marginTop: 12 }}><BucketTable tt={tt} base={base} showBusiness={t.kind === "business"} /></div>
-      {(t.baseline_daily + t.baseline_transport + t.baseline_hotels + t.baseline_unsplit) > 0 && (
-        <div className="section-foot">Includes starting totals added before tracking{tt.tracked ? `, plus ${tt.tracked} spends tracked here` : ""}.</div>
-      )}
 
       {BUCKETS.map(([key, label]) => {
         const rows = (spends ?? []).filter((s) => s.trip_bucket === key);

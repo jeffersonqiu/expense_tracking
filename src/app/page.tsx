@@ -78,7 +78,7 @@ export default async function Summary({ searchParams }: { searchParams: Promise<
         <div className="h-foot">
           {prevPersonal.total > 0
             ? Math.abs(delta) < 0.005 ? "Same as last month" : <>{money(Math.abs(delta), base)} {delta > 0 ? "more" : "less"} than last month</>
-            : "Accepted spends only; trips and giving tracked separately"}
+            : null}
         </div>
       </section>
 
@@ -98,12 +98,12 @@ export default async function Summary({ searchParams }: { searchParams: Promise<
               <div className="bar-track" style={{ margin: "6px 0 4px" }}><div className="bar-fill" style={{ width: `${Math.min(100, (giving.total / givingBudget) * 100)}%`, background: giving.total > givingBudget ? "var(--bad)" : undefined }} /></div>
               <div className="t-foot">{giving.total > givingBudget ? <span className="bad">{money(giving.total - givingBudget, base)} over</span> : `${money(givingBudget - giving.total, base)} left`} of {money(givingBudget, base)}</div>
             </>
-          ) : <div className="t-foot">parents, regular, ad hoc · set a budget</div>}
+          ) : <div className="t-foot">no budget</div>}
         </Link>
         <Link href={`/trips?y=${year}`} className="tile">
           <div className="t-label"><IconPlane />Trips {year}</div>
           <div className="t-value">{money(tripYear.personal.total, base)}</div>
-          <div className="t-foot">{tripYear.business.total ? `you paid · +${money(tripYear.business.total, base)} business` : `${yearTrips.length} ${yearTrips.length === 1 ? "trip" : "trips"}, tracked separately`}</div>
+          <div className="t-foot">{tripYear.business.total ? `you paid · +${money(tripYear.business.total, base)} business` : `${yearTrips.length} ${yearTrips.length === 1 ? "trip" : "trips"}`}</div>
         </Link>
         <Link href="/balances" className="tile">
           <div className="t-label"><IconBriefcase />Work claims</div>
@@ -114,20 +114,17 @@ export default async function Summary({ searchParams }: { searchParams: Promise<
           <Link href="/balances" className="tile">
             <div className="t-label"><IconPeople />Owed to you</div>
             <div className="t-value">{money(owedToMe, base)}</div>
-            <div className="t-foot">from earlier shared spends</div>
           </Link>
         )}
         {hh && hh.owner_id === uid && owedToMembers > 0 ? (
           <Link href="/household" className="tile">
             <div className="t-label"><IconHouse />To reimburse</div>
             <div className="t-value">{money(owedToMembers, hh.currency)}</div>
-            <div className="t-foot">household spends paid by others</div>
           </Link>
         ) : (
           <div className="tile">
             <div className="t-label"><IconChart />Invested</div>
             <div className="t-value">{money(personal.investments, base)}</div>
-            <div className="t-foot">not counted as spending</div>
           </div>
         )}
       </div>

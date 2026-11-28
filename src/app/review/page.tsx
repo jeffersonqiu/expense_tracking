@@ -32,8 +32,7 @@ export default async function ReviewPage({ searchParams }: { searchParams: Promi
   const empty = (
     <div className="empty-state">
       <IconCheckCircle />
-      <h2>You&apos;re all caught up</h2>
-      <p>New spends from Gmail will appear here within a few minutes.</p>
+      <h2>All caught up</h2>
     </div>
   );
   return (

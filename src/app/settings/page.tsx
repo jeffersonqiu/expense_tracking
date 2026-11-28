@@ -98,7 +98,6 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
           <IconChevronRight className="chev" />
         </Link>
       </div>
-      <div className="section-foot">The connector runs in your own Google account every 5 minutes. Setup guide: apps-script/README.md in the repository.</div>
 
       {/* Household */}
       <div className="section-label">Household</div>
@@ -116,7 +115,6 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
         )}
         {hh && <div className="row"><div className="main subtitle">{(members.data ?? []).length} {(members.data ?? []).length === 1 ? "member" : "members"} besides you</div></div>}
       </div>
-      {hh && <div className="section-foot">To add your spouse, invite them below with &ldquo;Add to {hh.name}&rdquo; ticked. They join when they first sign in.</div>}
 
       {households.length > 0 && (
         <>
@@ -145,7 +143,6 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
               <button className="btn primary">Add</button>
             </form>
           </div>
-          <div className="section-foot">Projects track one-off home spending (renovation, furniture) outside the monthly allowance. They don&apos;t reset monthly.</div>
         </>
       )}
       {/* People */}
@@ -207,7 +204,6 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
           </form>
         )}
       </div>
-      <div className="section-foot">When the cap is reached, emails still arrive and wait in Review untagged. Your OpenRouter balance is the hard ceiling.</div>
 
       {/* Learning */}
       <div className="section-label">Learning</div>
@@ -224,7 +220,6 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
           <form action={learnNow} className="inline"><button className="btn">Learn now</button></form>
         </div>
       </div>
-      <div className="section-foot">Runs weekly with Claude Sonnet 5.5 (about $0.05–0.15 per run, within your AI cap).</div>
 
       <div className="section-label">How often you kept the AI&apos;s suggestion</div>
       <div className="list">
@@ -257,7 +252,6 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
           </div>
         ))}
       </div>
-      <div className="section-foot">Remove anything that&apos;s wrong; the app stops using it immediately.</div>
 
       {/* Categories */}
       <div className="section-label">Categories</div>

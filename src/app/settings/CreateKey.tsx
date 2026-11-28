@@ -11,7 +11,7 @@ export function CreateKey() {
       {state.error && <div className="small bad" style={{ flexBasis: "100%" }}>{state.error}</div>}
       {state.key && (
         <div style={{ flexBasis: "100%", marginTop: 4 }}>
-          <div className="small muted" style={{ marginBottom: 6 }}>Copy this into the Apps Script <strong>INGEST_KEY</strong> property now. It won&apos;t be shown again.</div>
+          <div className="small muted" style={{ marginBottom: 6 }}>Shown once. Paste into Apps Script <strong>INGEST_KEY</strong>.</div>
           <div className="key" style={{ display: "block", padding: 10, userSelect: "all" }}>{state.key}</div>
         </div>
       )}

@@ -54,7 +54,7 @@ export default async function TripsPage({ searchParams }: { searchParams: Promis
 
   return (
     <Shell active="trips" pending={pendingCount}>
-      <Header title="Trips" sub="Travel spending, tracked separately from everyday spending" />
+      <Header title="Trips" />
       <Flash error={sp.error} ok={sp.ok} />
 
       {pastYears.length > 1 && (
@@ -66,7 +66,7 @@ export default async function TripsPage({ searchParams }: { searchParams: Promis
         <div className="tile"><div className="t-label">You paid · {year}</div><div className="t-value">{money(yearTotal.personal.total, base)}</div>
           <div className="t-foot">{yearTrips.filter((t) => t.kind === "personal").length} personal, {yearTrips.filter((t) => t.kind === "business").length} business {yearTrips.length === 1 ? "trip" : "trips"}</div></div>
         <div className="tile"><div className="t-label">Business · {year}</div><div className="t-value">{money(yearTotal.business.total, base)}</div>
-          <div className="t-foot">work spends, claimable</div></div>
+          <div className="t-foot">claimable</div></div>
       </div>
       <div style={{ marginTop: 12 }}><BucketTable tt={yearTotal} base={base} showBusiness={yearTotal.business.total !== 0 || yearTrips.some((t) => t.kind === "business")} /></div>
       {section("On a trip now", groups.now)}

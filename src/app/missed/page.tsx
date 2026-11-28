@@ -18,7 +18,7 @@ export default async function MissedPage({ searchParams }: { searchParams: Promi
     .order("received_at", { ascending: false }).limit(300);
   return (
     <Shell active="settings" pending={pendingCount}>
-      <Header title="Skipped emails" sub="Last 30 days. If one was really a spend, turn it into a draft." />
+      <Header title="Skipped emails" sub="Last 30 days" />
       <Flash error={flash.error} ok={flash.ok} />
       <div className="list">
         {(data ?? []).length === 0 && <div className="row empty">Nothing skipped.</div>}

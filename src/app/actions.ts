@@ -123,7 +123,7 @@ async function saveTxn(fd: FormData, inline: boolean): Promise<string> {
   const allocation = f.allocation;
   const key = merchantKey(f.merchant || "manual");
 
-  if (allocation === "household" && !f.household_id) back(returnTo, "Choose a household (create one in Settings first).");
+  if (allocation === "household" && !f.household_id) back(returnTo, "No household yet.");
 
   // Trip: required for a Trip spend, optional for Work (business trips). A new trip can start right from the card.
   let tripId: string | null = null;
@@ -136,7 +136,7 @@ async function saveTxn(fd: FormData, inline: boolean): Promise<string> {
       const nt = await db.from("trips").insert({ user_id: uid, name: f.new_trip_name, kind, start_date: start, end_date: end }).select("id").single();
       if (nt.error) {
         console.error("create trip", nt.error);
-        back(returnTo, nt.error.code === "23505" ? "A trip with that name already starts that day: pick it from the list." : "Couldn't create that trip.");
+        back(returnTo, nt.error.code === "23505" ? "That trip already exists." : "Couldn't create that trip.");
       }
       tripId = nt.data.id;
     } else if (f.trip_id && trips.some((t) => t.id === f.trip_id)) tripId = f.trip_id;
@@ -150,7 +150,7 @@ async function saveTxn(fd: FormData, inline: boolean): Promise<string> {
   if (pot === "project") {
     if (f.project_id && f.project_id !== "__new") projectId = f.project_id;
     else {
-      if (!f.new_project_name) back(returnTo, "Name the new project (or pick an existing one).");
+      if (!f.new_project_name) back(returnTo, "Project name needed.");
       const np = await db.from("household_projects")
         .insert({ household_id: f.household_id, name: f.new_project_name, created_by: uid }).select("id").single();
       if (np.error) {
@@ -375,7 +375,7 @@ export async function inviteEmail(fd: FormData) {
     if (p.data) await db.from("household_members").upsert({ household_id: hh.id, user_id: p.data.id });
   }
   revalidatePath("/settings");
-  back("/settings", `Invited ${email}. They can now sign in with Google${hh ? ` and will join ${hh.name}` : ""}.`, "ok");
+  back("/settings", `Invited ${email}`, "ok");
 }
 
 export async function removeInvite(fd: FormData) {
@@ -420,7 +420,7 @@ export async function addHouseholdMember(fd: FormData) {
   const inv = await db.from("allowed_emails").update({ household_id: hid }).eq("email", email).select("email");
   if (!inv.data?.length) back("/settings", `Invite ${email} first (under "Who can sign in"), ticking "Add to household".`);
   revalidatePath("/settings");
-  back("/settings", `${email} will join ${owns.data.name} when they first sign in.`, "ok");
+  back("/settings", `${email} added to ${owns.data.name}`, "ok");
 }
 
 export async function addCategory(fd: FormData) {
@@ -459,7 +459,7 @@ export async function promoteEmail(fd: FormData) {
     classifier: "manual",
     needs_manual_amount: true,
   }).select("id").single();
-  if (tx.error) back("/missed", "A draft for this email already exists, or it could not be created.");
+  if (tx.error) back("/missed", "Couldn't create a draft.");
   redirect(`/transactions/${tx.data.id}`);
 }
 
@@ -476,7 +476,7 @@ export async function suggestCategories() {
 
   const admin = adminClient();
   const ai = await makeDecider(admin, uid).catch(() => null);
-  if (!ai) back("/review", "AI is off or over budget: check Settings → AI and cost.");
+  if (!ai) back("/review", "AI is off or over budget.");
   const knowledge = await knowledgeFor(admin, uid);
   const byName = new Map(categories.map((c) => [c.name, c.id]));
   const hasHousehold = households.length > 0;
@@ -521,7 +521,7 @@ export async function suggestCategories() {
 
   for (let i = 0; i < rows.length; i += 5) await Promise.all(rows.slice(i, i + 5).map(one));
   revalidatePath("/review");
-  back("/review", `Suggested categories for ${filled} of ${rows.length} spends.${aiFailed ? " Some AI calls failed or hit the monthly cap." : ""}`, filled ? "ok" : "error");
+  back("/review", `${filled} of ${rows.length} suggested${aiFailed ? " · some failed" : ""}`, filled ? "ok" : "error");
 }
 
 /** Put an accepted/rejected spend back into the review queue. */
@@ -588,7 +588,7 @@ export async function retireFact(fd: FormData) {
   const { db, uid } = await getContext();
   await db.from("knowledge_facts").update({ active: false, updated_at: new Date().toISOString() }).eq("id", str(fd, "id")).eq("user_id", uid);
   revalidatePath("/settings");
-  back("/settings", "Removed. The app won't use that fact any more.", "ok");
+  back("/settings", "Removed", "ok");
 }
 
 // ---------------------------------------------------------------------------
@@ -610,7 +610,7 @@ export async function saveTrip(fd: FormData) {
   const { db, uid } = await getContext();
   const back_ = str(fd, "return_to") || "/trips";
   const p = TripForm.safeParse(Object.fromEntries(fd));
-  if (!p.success) back(back_, "Please give the trip a name and tap its dates on the calendar.");
+  if (!p.success) back(back_, "Name and dates needed.");
   const f = p.data;
   if (f.end_date && f.end_date < f.start_date) back(back_, "The end date is before the start date.");
   const budget = f.budget ? Number(f.budget.replace(/,/g, "")) : null;
@@ -627,7 +627,7 @@ export async function saveTrip(fd: FormData) {
   if (res.error) {
     console.error("saveTrip", res.error);
     back(back_, res.error.code === "23505" ? "A trip with that name and start date already exists."
-      : res.error.message.includes("work spends") ? "This trip has work spends, so it stays a business trip. Move those spends off the trip first."
+      : res.error.message.includes("work spends") ? "Has work spends, so it stays Business."
       : "Couldn't save the trip.");
   }
   revalidatePath("/", "layout");
@@ -638,7 +638,7 @@ export async function deleteTrip(fd: FormData) {
   const { db, uid } = await getContext();
   await db.from("trips").delete().eq("id", str(fd, "id")).eq("user_id", uid);
   revalidatePath("/", "layout");
-  back("/trips", "Trip deleted. Its spends are kept and moved back to Personal (work spends stay Work).", "ok");
+  back("/trips", "Trip deleted", "ok");
 }
 
 /** Monthly Giving budget (allowance to family, gifts, donations). Empty clears it. */

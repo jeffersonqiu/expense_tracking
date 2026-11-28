@@ -34,7 +34,7 @@ export default async function HouseholdPage({ searchParams }: { searchParams: Pr
         <div className="empty-state">
           <IconHouse />
           <h2>No household yet</h2>
-          <p>Create one in <Link href="/settings">Settings</Link> to track shared home spending against a monthly budget.</p>
+          <p><Link href="/settings">Create one in Settings</Link></p>
         </div>
       </Shell>
     );

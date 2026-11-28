@@ -137,7 +137,6 @@ export function TxnForm({
         <Segmented name="giving_kind" value={txn?.giving_kind ?? "adhoc"} options={[
           { value: "parents", label: "Parents" }, { value: "regular", label: "Regular" }, { value: "adhoc", label: "Ad hoc" },
         ]} />
-        <div className="small faint" style={{ marginTop: 6 }}>Counts toward your Giving budget, not personal spending</div>
       </div>
       <div className="block when-household">
         {households.length > 1 && (
@@ -187,7 +186,6 @@ export function TxnForm({
             { value: "daily", label: "Daily" }, { value: "transport", label: "Transport" }, { value: "hotels", label: "Hotels" },
           ]} />
         </div>
-        <div className="small faint when-work-only" style={{ marginTop: 6 }}>Optional: tag the business trip. A trip with work spends counts as a business trip.</div>
       </div>
 
       <div className="block when-not-giving">
@@ -235,7 +233,7 @@ export function TxnForm({
       <div className="actions">
         {mode === "review" ? (
           <>
-            <div className="opts small faint">Every decision teaches the app</div>
+            <div className="opts" />
             <div className="go">
               <button className="btn destructive" name="decision" value="reject" formNoValidate>Reject</button>
               <button className="btn primary" name="decision" value="accept">Accept</button>

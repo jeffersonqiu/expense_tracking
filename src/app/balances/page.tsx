@@ -31,7 +31,7 @@ export default async function BalancesPage({ searchParams }: { searchParams: Pro
 
   return (
     <Shell active="balances" pending={pendingCount}>
-      <Header title="Balances" sub="Money that's coming back to you" />
+      <Header title="Balances" />
       <Flash error={flash.error} ok={flash.ok} />
 
       <div className="section-label">Work claims</div>

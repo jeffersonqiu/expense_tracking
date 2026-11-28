@@ -41,7 +41,7 @@ export default async function GivingPage({ searchParams }: { searchParams: Promi
 
   return (
     <Shell active="giving" pending={pendingCount}>
-      <Header title="Giving" sub="Allowance to family, gifts and donations, kept outside personal spending">
+      <Header title="Giving">
         <MonthStepper ym={ym} path="/giving" />
       </Header>
       <Flash error={sp.error} ok={sp.ok} />
@@ -54,7 +54,7 @@ export default async function GivingPage({ searchParams }: { searchParams: Promi
             <div className="bar-track" style={{ margin: "10px 0 6px" }}><div className="bar-fill" style={{ width: `${Math.min(100, (month.total / budget) * 100)}%`, background: month.total > budget ? "var(--bad)" : undefined }} /></div>
             <div className="h-foot">{month.total > budget ? <span className="bad">{money(month.total - budget, base)} over</span> : `${money(budget - month.total, base)} left`} of {money(budget, base)} monthly budget</div>
           </>
-        ) : <div className="h-foot">Set a monthly budget below</div>}
+        ) : null}
       </section>
 
       <div className="tiles two">
@@ -92,7 +92,7 @@ export default async function GivingPage({ searchParams }: { searchParams: Promi
 
       <h2 className="section-title">This month</h2>
       <div className="list">
-        {month.rows.length === 0 && <div className="row empty">Nothing given this month yet. Choose <strong>Giving</strong> as the allocation on a spend card and it shows up here.</div>}
+        {month.rows.length === 0 && <div className="row empty">Nothing this month</div>}
         {month.rows.map((r) => (
           <Link className="row" href={`/transactions/${r.id}`} key={r.id}>
             <div className="main"><div className="title">{r.merchant ?? "—"}</div><div className="subtitle">{sgtDate(r.occurred_at)} · {r.giving_kind === "parents" ? "Parents" : r.giving_kind === "regular" ? "Regular" : "Ad hoc"}</div></div>
@@ -109,7 +109,6 @@ export default async function GivingPage({ searchParams }: { searchParams: Promi
         <label className="field"><span>Monthly giving budget ({base})</span>
           <input name="budget" type="number" inputMode="decimal" min="0" step="1" defaultValue={budget ?? ""} placeholder="e.g. 1000" />
         </label>
-        <p className="small muted">Spends with the Giving allocation count here instead of in personal spending. Leave empty for no budget.</p>
         <div style={{ display: "flex", justifyContent: "flex-end" }}><button className="btn primary">Save budget</button></div>
       </form>
     </Shell>
