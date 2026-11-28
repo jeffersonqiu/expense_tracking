@@ -40,7 +40,8 @@ export function tripByDate(trips: TripOption[], occurredAt: string, category: st
   return { id: hit.id, bucket: category === "Hotels" ? "hotels" : category === "Travel" ? "transport" : "daily" };
 }
 
-/** What the AI (or the fallback rules) proposed, kept to compare with the final decision. */
+/** What the AI (or the fallback rules) proposed, kept to compare with the final decision.
+ *  `pot` is the household pot, or the giving branch when the allocation is giving. */
 export interface Suggestion {
   category: string | null;
   allocation: string | null;
@@ -60,6 +61,8 @@ export interface Draft extends ParsedTxn {
   classifier: string;
   needsManualAmount: boolean;
   householdPot: string | null;
+  /** Giving branch (parents / regular / adhoc) when the allocation is giving. */
+  givingKind: string | null;
   tripId: string | null;
   tripBucket: TripBucket | null;
   suggestion: Suggestion;
@@ -126,10 +129,11 @@ export async function processEmail(email: IncomingEmail, ctx: ProcessContext): P
     const utilityHint = isHouseholdUtility(t.merchantRaw);
 
     // Fallback when AI is off: keyword category, utilities as household bills.
+    const givingHint = keywordHint === "Giving";
     let suggestion: Suggestion = {
       category: keywordHint,
-      allocation: utilityHint && ctx.hasHousehold ? "household" : "personal",
-      pot: utilityHint && ctx.hasHousehold ? "bills" : null,
+      allocation: givingHint ? "giving" : utilityHint && ctx.hasHousehold ? "household" : "personal",
+      pot: givingHint ? "adhoc" : utilityHint && ctx.hasHousehold ? "bills" : null,
       confidence: { category: keywordHint ? 0.7 : 0, allocation: 0.5, pot: utilityHint ? 0.6 : 0 },
       source: "rules",
     };
@@ -151,8 +155,9 @@ export async function processEmail(email: IncomingEmail, ctx: ProcessContext): P
       suggestion = {
         category: d.category ?? keywordHint,
         allocation: d.allocation === "household" && !ctx.hasHousehold ? "personal" : d.allocation ?? suggestion.allocation,
-        pot: d.allocation === "household" && ctx.hasHousehold ? d.pot ?? "allowance" : null,
-        confidence: { category: d.categoryConfidence, allocation: d.allocationConfidence, pot: d.potConfidence, trip: d.tripConfidence ?? 0 },
+        pot: d.allocation === "household" && ctx.hasHousehold ? d.pot ?? "allowance"
+          : d.allocation === "giving" ? d.givingKind ?? "adhoc" : null,
+        confidence: { category: d.categoryConfidence, allocation: d.allocationConfidence, pot: d.allocation === "giving" ? d.givingConfidence ?? 0 : d.potConfidence, trip: d.tripConfidence ?? 0 },
         source: classifier === "rules" ? ctx.ai.name : classifier,
         trip: d.trip ?? null,
         bucket: d.trip ? d.bucket ?? "daily" : null,
@@ -166,6 +171,7 @@ export async function processEmail(email: IncomingEmail, ctx: ProcessContext): P
       categoryName: suggestion.category,
       allocation: suggestion.trip && (suggestion.allocation === "personal" || !suggestion.allocation) ? "trip" : suggestion.allocation,
       householdPot: suggestion.allocation === "household" ? suggestion.pot : null,
+      givingKind: suggestion.allocation === "giving" ? suggestion.pot ?? "adhoc" : null,
       tripId: suggestion.trip ?? null,
       tripBucket: suggestion.trip ? suggestion.bucket ?? "daily" : null,
       confidence: Math.min(baseConfidence, suggestion.category ? suggestion.confidence.category || 0.5 : 0.5),

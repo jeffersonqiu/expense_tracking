@@ -147,6 +147,19 @@ describe("processEmail", () => {
     expect(seen!.facts).toEqual(["Weekday lunch PayNow to people is usually Food"]);
   });
 
+  it("Giving: keyword fallback files a donation as Giving (ad hoc); the AI can pick the branch", async () => {
+    const plain = await processEmail(F.wiseToFoundation, ctx());
+    expect(plain.drafts[0]).toMatchObject({ categoryName: "Giving", allocation: "giving", givingKind: "adhoc" });
+    const ai: Decider = {
+      name: "fake",
+      extract: async () => ({ isTransaction: false, confidence: 0 }),
+      decide: async () => ({ ...NO_DECISION, category: "Other", categoryConfidence: 0.9, allocation: "giving", allocationConfidence: 0.9, givingKind: "regular", givingConfidence: 0.8 }),
+    };
+    const out = await processEmail(F.wiseToFoundation, ctx(ai));
+    expect(out.drafts[0]).toMatchObject({ allocation: "giving", givingKind: "regular", householdPot: null });
+    expect(out.drafts[0]!.suggestion).toMatchObject({ allocation: "giving", pot: "regular" });
+  });
+
   it("a personal spend the AI places in a trip becomes a Trip spend; work stays work", async () => {
     const mk = (allocation: "personal" | "work"): Decider => ({
       name: "fake",
@@ -213,6 +226,22 @@ describe("hotels", () => {
     expect(keywordCategory("Marriott Bonvoy")).toBe("Hotels");
     expect(keywordCategory("AIRBNB * HM8XYZ")).toBe("Hotels");
     expect(keywordCategory("Singapore Airlines")).toBe("Travel");
+  });
+});
+
+describe("wise", () => {
+  it("reads a transfer: amount paid (fee included), recipient, what arrived", () => {
+    expect(txn(F.wiseToFoundation)).toMatchObject({
+      amount: 99.3, currency: "SGD", kind: "spend", merchantRaw: "Wise to Yayasan Contoh Harapan",
+      counterpartyType: "business", paymentMethod: "Wise", description: "Received 1,395,000 IDR · Wise #1111111111",
+    });
+    expect(txn(F.wiseToPerson)).toMatchObject({ amount: 300000, currency: "IDR", merchantRaw: "Wise to Budi Santoso", counterpartyType: "individual" });
+  });
+  it("a transfer to your own account is a transfer, not spending", () => {
+    expect(txn(F.wiseToSelf)).toMatchObject({ kind: "transfer", merchantRaw: "Wise to own account", amount: 639.54 });
+  });
+  it("status updates are ignored", () => {
+    expect(runParsers(F.wisePaused).type).toBe("ignored");
   });
 });
 

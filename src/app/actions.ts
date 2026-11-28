@@ -19,7 +19,7 @@ import { nearbyTrips, sgtWhen } from "@/lib/pipeline/process";
 import { makeDecider } from "@/lib/server/ingest";
 
 const KINDS = ["spend", "refund", "investment", "transfer", "income"] as const;
-const ALLOCATIONS = ["personal", "work", "trip", "household"] as const;
+const ALLOCATIONS = ["personal", "work", "trip", "household", "giving"] as const;
 const CLAIM = ["to_claim", "submitted", "reimbursed"] as const;
 
 /** Send the user back to a page with a readable message (server actions must not crash the page). */
@@ -50,6 +50,7 @@ const TxnForm = z.object({
   claim_status: z.enum(CLAIM).optional().or(z.literal("")),
   household_id: optId,
   household_pot: z.enum(["allowance", "bills", "project"]).optional().or(z.literal("")),
+  giving_kind: z.enum(["parents", "regular", "adhoc"]).optional().or(z.literal("")),
   project_id: z.string().regex(ID).optional().or(z.literal("")).or(z.literal("__new")),
   new_project_name: z.string().trim().max(80).optional(),
   trip_id: z.string().regex(ID).optional().or(z.literal("")).or(z.literal("__new")),
@@ -65,7 +66,7 @@ const TxnForm = z.object({
 const FIELD_LABELS: Record<string, string> = {
   amount: "Amount", currency: "Currency (3 letters, e.g. SGD)", kind: "Type", merchant: "Merchant",
   category_id: "Category", allocation: "Allocation", claim_status: "Claim status", household_id: "Household",
-  household_pot: "Household pot", project_id: "Project", new_project_name: "Project name", trip_id: "Trip", new_trip_name: "Trip name", new_trip_start: "Trip start", new_trip_end: "Trip end", trip_bucket: "Trip bucket",
+  household_pot: "Household pot", giving_kind: "Giving type", project_id: "Project", new_project_name: "Project name", trip_id: "Trip", new_trip_name: "Trip name", new_trip_start: "Trip start", new_trip_end: "Trip end", trip_bucket: "Trip bucket",
   occurred_at: "Date", id: "Transaction", decision: "Action",
 };
 
@@ -144,6 +145,7 @@ async function saveTxn(fd: FormData, inline: boolean): Promise<string> {
 
   // Household pot and project (a new project can be started right from the card)
   const pot = allocation === "household" ? f.household_pot || "allowance" : null;
+  const givingKind = allocation === "giving" ? f.giving_kind || "adhoc" : null;
   let projectId: string | null = null;
   if (pot === "project") {
     if (f.project_id && f.project_id !== "__new") projectId = f.project_id;
@@ -174,6 +176,7 @@ async function saveTxn(fd: FormData, inline: boolean): Promise<string> {
     claim_status: allocation === "work" ? f.claim_status || "to_claim" : null,
     household_id: allocation === "household" ? f.household_id || null : null,
     household_pot: pot,
+    giving_kind: givingKind,
     project_id: projectId,
     trip_id: tripId,
     trip_bucket: tripId ? f.trip_bucket || "daily" : null,
@@ -223,7 +226,7 @@ async function saveTxn(fd: FormData, inline: boolean): Promise<string> {
     } : {});
     const finalCategory = catName(f.category_id || null);
     const finalAllocation = allocation;
-    const finalPot = pot;
+    const finalPot = pot ?? givingKind; // household pot, or the giving branch
     const email = before?.source_emails as unknown as { body_text?: string } | null;
     const { error: logErr } = await db.from("decision_log").insert({
       user_id: uid,
@@ -246,7 +249,7 @@ async function saveTxn(fd: FormData, inline: boolean): Promise<string> {
       final_project: projectId ? projects.find((p) => p.id === projectId)?.name ?? f.new_project_name ?? null : null,
       corrected_category: !!f.id && f.decision !== "reject" && (suggested.category ?? null) !== finalCategory,
       corrected_allocation: !!f.id && f.decision !== "reject" && (suggested.allocation ?? "personal") !== finalAllocation,
-      corrected_pot: !!f.id && f.decision !== "reject" && finalAllocation === "household" && (suggested.pot ?? null) !== finalPot,
+      corrected_pot: !!f.id && f.decision !== "reject" && (finalAllocation === "household" || finalAllocation === "giving") && (suggested.pot ?? null) !== finalPot,
       final_trip: tripId ? trips.find((t) => t.id === tripId)?.name ?? null : null,
       final_trip_bucket: tripId ? f.trip_bucket || "daily" : null,
       corrected_trip: !!f.id && f.decision !== "reject" && (suggested.trip ?? null) !== tripId,
@@ -493,13 +496,15 @@ export async function suggestCategories() {
       if (!catId) return;
       const base = d.allocation === "household" && !hasHousehold ? "personal" : d.allocation ?? "personal";
       const allocation = d.trip && base === "personal" ? "trip" : base;
-      const pot = allocation === "household" ? (d.pot === "project" ? "allowance" : d.pot ?? "allowance") : null;
+      const pot = allocation === "household" ? (d.pot === "project" ? "allowance" : d.pot ?? "allowance")
+        : allocation === "giving" ? d.givingKind ?? "adhoc" : null;
       const suggestion = {
         category: d.category, allocation, pot, source: ai.name, trip: d.trip ?? null, bucket: d.trip ? d.bucket ?? "daily" : null,
         confidence: { category: d.categoryConfidence, allocation: d.allocationConfidence, pot: d.potConfidence, trip: d.tripConfidence ?? 0 },
       };
       await db.from("transactions").update({
-        category_id: catId, allocation, household_pot: pot,
+        category_id: catId, allocation, household_pot: allocation === "household" ? pot : null,
+        giving_kind: allocation === "giving" ? pot : null,
         household_id: allocation === "household" ? households[0]!.id : null,
         claim_status: allocation === "work" ? "to_claim" : null,
         classifier: ai.name, confidence: d.categoryConfidence, suggestion,

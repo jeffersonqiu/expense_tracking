@@ -1,5 +1,5 @@
 import type { IncomingEmail, Kind } from "../pipeline/types";
-import { CATEGORY_HINTS, ALLOCATION_GUIDE, BUCKET_GUIDE, POT_GUIDE, decisionState, type TripBucket, type Allocation, type CostSink, type Decider, type Decision, type DecisionInput, type Extracted, type Pot } from "./types";
+import { CATEGORY_HINTS, GIVING_GUIDE, type GivingKind, ALLOCATION_GUIDE, BUCKET_GUIDE, POT_GUIDE, decisionState, type TripBucket, type Allocation, type CostSink, type Decider, type Decision, type DecisionInput, type Extracted, type Pot } from "./types";
 
 /**
  * Jev (TypeSafe System One decision model) via OpenRouter's Decisions API.
@@ -117,6 +117,7 @@ export class JevDecider implements Decider {
       };
       questions.trip_bucket = { type: "choice", instructions: "If it is part of a trip, which trip budget bucket?", criteria: BUCKET_GUIDE };
     }
+    questions.giving_kind = { type: "choice", instructions: "If this is giving (money given away), which kind? Follow the user's past decisions for the same recipient.", criteria: GIVING_GUIDE };
     if (input.hasHousehold) {
       questions.pot = { type: "choice", instructions: "If this is household spending, which household pot does it belong to?", criteria: POT_GUIDE };
     }
@@ -127,6 +128,7 @@ export class JevDecider implements Decider {
     const pot = pick("pot");
     const trip = pick("trip");
     const bucket = pick("trip_bucket");
+    const gk = pick("giving_kind");
     const tripId = trip && trip.choice !== "none" && trips.some((t) => t.id === trip.choice) ? trip.choice : null;
     return {
       trip: tripId,
@@ -138,6 +140,8 @@ export class JevDecider implements Decider {
       allocationConfidence: clamp(alloc?.confidence),
       pot: pot && pot.choice in POT_GUIDE ? (pot.choice as Pot) : null,
       potConfidence: clamp(pot?.confidence),
+      givingKind: gk && gk.choice in GIVING_GUIDE ? (gk.choice as GivingKind) : null,
+      givingConfidence: clamp(gk?.confidence),
     };
   }
 }

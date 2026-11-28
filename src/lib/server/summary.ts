@@ -25,13 +25,13 @@ export function myShare(r: SummaryRow): number {
   return Math.max(0, total - others);
 }
 
-/** Personal spending for a period. Trips are excluded, and so is Giving (it has its own budget). */
-export async function personalMonth(db: SupabaseClient, uid: string, start: string, end: string, givingCategoryId?: string | null) {
+/** Personal spending for a period. Trips and Giving are their own allocations, so they're not in here. */
+export async function personalMonth(db: SupabaseClient, uid: string, start: string, end: string) {
   const { data } = await db.from("transactions")
     .select("id, user_id, amount, fx_rate, base_amount, kind, allocation, category_id, household_id, reimbursed_at, shared_shares(amount, settled_at)")
     .eq("user_id", uid).eq("status", "confirmed").in("allocation", ["personal", "shared"]).is("trip_id", null)
     .gte("occurred_at", start).lt("occurred_at", end);
-  const rows = ((data ?? []) as SummaryRow[]).filter((r) => !givingCategoryId || r.category_id !== givingCategoryId);
+  const rows = (data ?? []) as SummaryRow[];
   const byCategory = new Map<string | null, number>();
   let total = 0;
   let investments = 0;
@@ -106,15 +106,22 @@ export async function projectTotals(db: SupabaseClient, householdId: string) {
   return totals;
 }
 
-export interface GivingRow { id: string; occurred_at: string; merchant: string | null; amount: number | string; currency: string; base_amount: number | string | null; kind: string; allocation: string; fx_rate: number | string | null; shared_shares?: { amount: number | string; settled_at: string | null }[] }
+export type GivingKindName = "parents" | "regular" | "adhoc";
+export interface GivingRow { id: string; occurred_at: string; merchant: string | null; amount: number | string; currency: string; base_amount: number | string | null; kind: string; giving_kind: GivingKindName }
 
-/** Giving (allowance to family, gifts, donations) in a period: everyday spends filed under Giving. */
-export async function givingPeriod(db: SupabaseClient, uid: string, categoryId: string | null | undefined, start: string, end: string) {
-  if (!categoryId) return { total: 0, rows: [] as GivingRow[] };
+/** Giving in a period (allocation "giving"), with totals per branch. */
+export async function givingPeriod(db: SupabaseClient, uid: string, start: string, end: string) {
   const { data } = await db.from("transactions")
-    .select("id, user_id, occurred_at, merchant, amount, currency, base_amount, fx_rate, kind, allocation, category_id, household_id, reimbursed_at, shared_shares(amount, settled_at)")
-    .eq("user_id", uid).eq("status", "confirmed").eq("category_id", categoryId).in("allocation", ["personal", "shared"]).is("trip_id", null)
+    .select("id, occurred_at, merchant, amount, currency, base_amount, kind, giving_kind")
+    .eq("user_id", uid).eq("status", "confirmed").eq("allocation", "giving")
     .gte("occurred_at", start).lt("occurred_at", end).order("occurred_at", { ascending: false });
-  const rows = (data ?? []) as (GivingRow & SummaryRow)[];
-  return { total: rows.reduce((s, r) => s + myShare(r), 0), rows };
+  const rows = (data ?? []) as GivingRow[];
+  const byKind: Record<GivingKindName, number> = { parents: 0, regular: 0, adhoc: 0 };
+  let total = 0;
+  for (const r of rows) {
+    const v = spendValue(r.kind, r.base_amount == null ? null : Number(r.base_amount));
+    total += v;
+    byKind[r.giving_kind ?? "adhoc"] += v;
+  }
+  return { total, byKind, rows };
 }

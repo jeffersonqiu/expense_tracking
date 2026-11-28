@@ -119,6 +119,20 @@ end $$;
 update public.transactions set allocation = 'personal', claim_status = null, trip_id = null, trip_bucket = null
  where id = '20000000-0000-0000-0000-000000000002';
 
+-- Giving needs a branch, and a branch only goes with Giving.
+do $$ begin
+  update public.transactions set allocation = 'giving' where id = '20000000-0000-0000-0000-000000000002';
+  raise exception 'giving without a branch';
+exception when check_violation then null;
+end $$;
+update public.transactions set allocation = 'giving', giving_kind = 'parents' where id = '20000000-0000-0000-0000-000000000002';
+do $$ begin
+  update public.transactions set allocation = 'personal' where id = '20000000-0000-0000-0000-000000000002';
+  raise exception 'branch left on a personal spend';
+exception when check_violation then null;
+end $$;
+update public.transactions set allocation = 'personal', giving_kind = null where id = '20000000-0000-0000-0000-000000000002';
+
 -- Trip allocation needs a trip; deleting a trip keeps its spends as personal.
 do $$ begin
   update public.transactions set allocation = 'trip' where id = '20000000-0000-0000-0000-000000000002';

@@ -292,7 +292,42 @@ export const coinhako: Parser = {
   },
 };
 
-export const PARSERS: Parser[] = [uob, ocbc, tada, grab, shopee, stripe, simba, coinhako];
+// ---------------------------------------------------------------------------
+// Wise (noreply@wise.com): "Transfer sent". The amount is what left your
+// account (fee included), so the SGD total matches what you actually paid.
+// ---------------------------------------------------------------------------
+export const wise: Parser = {
+  id: "wise",
+  matches: (e) => fromDomain(e.from, "wise.com"),
+  parse(e) {
+    if (!/^transfer sent/i.test(e.subject.trim())) {
+      return /paused|cancel|refund|verify/i.test(e.subject) ? ignore("wise", "transfer status update") : { type: "unknown" };
+    }
+    const t = flatten(e.text);
+    const head = /#\s*([\d,.]+)\s+([A-Z]{3}) is now in (?:(.+?)['’]s|your) account\./.exec(t);
+    const det = /Amount:\s*([\d,.]+)\s+([A-Z]{3})(?:\s+Rate:[^W]*?)?\s+Wise fee:\s*([\d,.]+)\s+([A-Z]{3})/.exec(t);
+    const no = /Transfer Number:\s*#(\d+)/.exec(t)?.[1];
+    if (!head || !det) return ignore("wise", "not a transfer receipt");
+    const mo = money(det[2], det[1]);
+    if (!mo) return ignore("wise", "unreadable amount");
+    const recipient = head[3]?.trim();
+    const received = `${head[1]} ${head[2]}`;
+    const org = recipient && /\b(yayasan|foundation|fund|charity|church|temple|masjid|mosque|pt|ltd|inc|llc|gereja|panti)\b/i.test(recipient);
+    return ok("wise", [{
+      ...mo,
+      occurredAt: e.date,
+      // To your own account: money moved, not spent (change it on the card if it was for someone).
+      kind: recipient ? "spend" : "transfer",
+      merchantRaw: recipient ? `Wise to ${recipient}` : "Wise to own account",
+      counterpartyType: recipient ? (org ? "business" : "individual") : "unknown",
+      paymentMethod: "Wise",
+      role: "rail",
+      description: `Received ${received}${no ? ` · Wise #${no}` : ""}`,
+    }]);
+  },
+};
+
+export const PARSERS: Parser[] = [uob, ocbc, tada, grab, shopee, stripe, simba, coinhako, wise];
 
 export function runParsers(email: IncomingEmail): ParseResult {
   for (const p of PARSERS) {

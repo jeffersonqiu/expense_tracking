@@ -21,6 +21,7 @@ export interface TxnRow {
   claim_status: string | null;
   household_id: string | null;
   household_pot?: string | null;
+  giving_kind?: string | null;
   trip_id?: string | null;
   trip_bucket?: string | null;
   suggestion?: unknown;
@@ -41,6 +42,7 @@ const ALLOCATIONS = [
   { value: "work", label: "Work" },
   { value: "trip", label: "Trip" },
   { value: "household", label: "Household" },
+  { value: "giving", label: "Giving" },
 ];
 
 const sgtDay = (iso?: string) => new Date(new Date(iso ?? Date.now()).getTime() + 8 * 3600e3).toISOString().slice(0, 10);
@@ -120,7 +122,7 @@ export function TxnForm({
 
       <div className="block">
         <div className="lbl">Allocation</div>
-        <Segmented name="allocation" value={allocation} options={ALLOCATIONS} />
+        <div className="seg-five"><Segmented name="allocation" value={allocation} options={ALLOCATIONS} /></div>
         {utilityHint && <div className="small faint" style={{ marginTop: 6 }}>Looks like a household utility bill</div>}
       </div>
 
@@ -129,6 +131,13 @@ export function TxnForm({
         <Segmented name="claim_status" value={txn?.claim_status ?? "to_claim"} options={[
           { value: "to_claim", label: "To claim" }, { value: "submitted", label: "Submitted" }, { value: "reimbursed", label: "Reimbursed" },
         ]} />
+      </div>
+      <div className="block when-giving">
+        <div className="lbl">Giving</div>
+        <Segmented name="giving_kind" value={txn?.giving_kind ?? "adhoc"} options={[
+          { value: "parents", label: "Parents" }, { value: "regular", label: "Regular" }, { value: "adhoc", label: "Ad hoc" },
+        ]} />
+        <div className="small faint" style={{ marginTop: 6 }}>Counts toward your Giving budget, not personal spending</div>
       </div>
       <div className="block when-household">
         {households.length > 1 && (

@@ -14,13 +14,12 @@ export default async function Summary({ searchParams }: { searchParams: Promise<
   const { ym, start, end } = monthRange(sp.m);
   const prev = monthRange(shiftMonth(ym, -1));
   const hh = households[0];
-  const givingId = categories.find((c) => c.name === "Giving")?.id ?? null;
   const givingBudget = profile?.giving_monthly_budget == null ? null : Number(profile.giving_monthly_budget);
-  const giving = await givingPeriod(db, uid, givingId, start, end);
+  const giving = await givingPeriod(db, uid, start, end);
 
   const [personal, prevPersonal, household, heartbeat, claims, shares, owed, recent] = await Promise.all([
-    personalMonth(db, uid, start, end, givingId),
-    personalMonth(db, uid, prev.start, prev.end, givingId),
+    personalMonth(db, uid, start, end),
+    personalMonth(db, uid, prev.start, prev.end),
     hh ? householdMonth(db, hh.id, start, end) : Promise.resolve(null),
     db.from("script_heartbeats").select("last_seen_at").eq("user_id", uid).maybeSingle(),
     db.from("transactions").select("base_amount").eq("user_id", uid).eq("allocation", "work").eq("status", "confirmed").in("claim_status", ["to_claim", "submitted"]),
@@ -99,7 +98,7 @@ export default async function Summary({ searchParams }: { searchParams: Promise<
               <div className="bar-track" style={{ margin: "6px 0 4px" }}><div className="bar-fill" style={{ width: `${Math.min(100, (giving.total / givingBudget) * 100)}%`, background: giving.total > givingBudget ? "var(--bad)" : undefined }} /></div>
               <div className="t-foot">{giving.total > givingBudget ? <span className="bad">{money(giving.total - givingBudget, base)} over</span> : `${money(givingBudget - giving.total, base)} left`} of {money(givingBudget, base)}</div>
             </>
-          ) : <div className="t-foot">family, gifts, donations · set a budget</div>}
+          ) : <div className="t-foot">parents, regular, ad hoc · set a budget</div>}
         </Link>
         <Link href={`/trips?y=${year}`} className="tile">
           <div className="t-label"><IconPlane />Trips {year}</div>

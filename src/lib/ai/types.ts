@@ -45,7 +45,8 @@ export interface CategoryInput {
 }
 
 /** What the AI chooses; "trip" is set when it places the spend in a trip. */
-export type Allocation = "personal" | "work" | "household";
+export type Allocation = "personal" | "work" | "household" | "giving";
+export type GivingKind = "parents" | "regular" | "adhoc";
 export type Pot = "allowance" | "bills" | "project";
 
 /** A past review decision shown to the model as an example. */
@@ -94,6 +95,8 @@ export interface Decision {
   allocationConfidence: number;
   pot: Pot | null;
   potConfidence: number;
+  givingKind?: GivingKind | null;
+  givingConfidence?: number;
   /** Trip id, or null when not part of a trip. */
   trip?: string | null;
   tripConfidence?: number;
@@ -110,7 +113,14 @@ export const CATEGORY_HINTS: Record<string, string> = {
 export const ALLOCATION_GUIDE: Record<Allocation, string> = {
   personal: "The user's own spending.",
   work: "Paid for work; the user will claim it back from their company (also on work trips).",
+  giving: "Money the user gives away: allowance to parents/family, recurring donations, gifts and one-off donations.",
   household: "Home spending funded by the user: groceries/daily needs, utility bills, or home projects.",
+};
+
+export const GIVING_GUIDE: Record<GivingKind, string> = {
+  parents: "Allowance or support for the user's parents or family.",
+  regular: "Recurring giving to the same recipient, e.g. a monthly donation to a foundation or charity.",
+  adhoc: "One-off gifts, red packets and occasional donations.",
 };
 
 export const POT_GUIDE: Record<Pot, string> = {

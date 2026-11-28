@@ -12,20 +12,21 @@ export const metadata = { title: "Giving · Expenses" };
 
 export default async function GivingPage({ searchParams }: { searchParams: Promise<{ m?: string; error?: string; ok?: string }> }) {
   const sp = await searchParams;
-  const { db, uid, profile, categories, pendingCount } = await getContext();
+  const { db, uid, profile, pendingCount } = await getContext();
   const base = profile?.base_currency ?? "SGD";
   const { ym, start, end } = monthRange(sp.m);
-  const givingId = categories.find((c) => c.name === "Giving")?.id ?? null;
   const budget = profile?.giving_monthly_budget == null ? null : Number(profile.giving_monthly_budget);
   const [month, ytd] = await Promise.all([
-    givingPeriod(db, uid, givingId, start, end),
-    givingPeriod(db, uid, givingId, yearStart(ym), end),
+    givingPeriod(db, uid, start, end),
+    givingPeriod(db, uid, yearStart(ym), end),
   ]);
   // Count from the first month with Giving recorded this year, so a fresh start isn't averaged over empty months.
   const firstYm = ytd.rows.length ? ytd.rows.map((r) => new Date(new Date(r.occurred_at).getTime() + 8 * 3600e3).toISOString().slice(0, 7)).sort()[0]! : ym;
   const monthsSoFar = Math.max(1, Number(ym.slice(5, 7)) - Number(firstYm.slice(5, 7)) + 1);
   const firstLabel = new Intl.DateTimeFormat("en-SG", { month: "short", timeZone: "UTC" }).format(new Date(firstYm + "-01T00:00:00Z"));
   const ytdBudget = budget ? budget * monthsSoFar : null;
+
+  const BRANCHES = [["parents", "Parents"], ["regular", "Regular"], ["adhoc", "Ad hoc"]] as const;
 
   // Who received it this month (e.g. the monthly transfer to your parents, a charity)
   const byRecipient = new Map<string, { total: number; n: number }>();
@@ -63,6 +64,18 @@ export default async function GivingPage({ searchParams }: { searchParams: Promi
           <div className="t-foot">{monthsSoFar === 1 ? `${firstLabel} only` : `${firstLabel} to ${new Intl.DateTimeFormat("en-SG", { month: "short", timeZone: "UTC" }).format(new Date(ym + "-01T00:00:00Z"))}`}</div></div>
       </div>
 
+      <div className="list" style={{ marginTop: 12 }}>
+        <table className="buckets num">
+          <thead><tr><th /><th>This month</th><th>{ym.slice(0, 4)} so far</th></tr></thead>
+          <tbody>
+            {BRANCHES.map(([k, label]) => (
+              <tr key={k}><th>{label}</th><td>{money(month.byKind[k], base)}</td><td>{money(ytd.byKind[k], base)}</td></tr>
+            ))}
+          </tbody>
+          <tfoot><tr><th>Total</th><td>{money(month.total, base)}</td><td>{money(ytd.total, base)}</td></tr></tfoot>
+        </table>
+      </div>
+
       {recipients.length > 0 && (
         <>
           <h2 className="section-title">To whom</h2>
@@ -79,10 +92,10 @@ export default async function GivingPage({ searchParams }: { searchParams: Promi
 
       <h2 className="section-title">This month</h2>
       <div className="list">
-        {month.rows.length === 0 && <div className="row empty">Nothing filed under Giving this month. Pick <strong>Giving</strong> on a spend card and it shows up here.</div>}
+        {month.rows.length === 0 && <div className="row empty">Nothing given this month yet. Choose <strong>Giving</strong> as the allocation on a spend card and it shows up here.</div>}
         {month.rows.map((r) => (
           <Link className="row" href={`/transactions/${r.id}`} key={r.id}>
-            <div className="main"><div className="title">{r.merchant ?? "—"}</div><div className="subtitle">{sgtDate(r.occurred_at)}</div></div>
+            <div className="main"><div className="title">{r.merchant ?? "—"}</div><div className="subtitle">{sgtDate(r.occurred_at)} · {r.giving_kind === "parents" ? "Parents" : r.giving_kind === "regular" ? "Regular" : "Ad hoc"}</div></div>
             <div className="trail num">
               <div>{money(r.amount, r.currency)}</div>
               {r.currency !== base && <div className="subtitle">{money(r.base_amount, base)}</div>}
@@ -96,7 +109,7 @@ export default async function GivingPage({ searchParams }: { searchParams: Promi
         <label className="field"><span>Monthly giving budget ({base})</span>
           <input name="budget" type="number" inputMode="decimal" min="0" step="1" defaultValue={budget ?? ""} placeholder="e.g. 1000" />
         </label>
-        <p className="small muted">Spends filed under Giving count here instead of in personal spending. Leave empty for no budget.</p>
+        <p className="small muted">Spends with the Giving allocation count here instead of in personal spending. Leave empty for no budget.</p>
         <div style={{ display: "flex", justifyContent: "flex-end" }}><button className="btn primary">Save budget</button></div>
       </form>
     </Shell>

@@ -1,5 +1,5 @@
 import type { IncomingEmail } from "../pipeline/types";
-import { CATEGORY_HINTS, ALLOCATION_GUIDE, BUCKET_GUIDE, POT_GUIDE, decisionState, type TripBucket, type Allocation, type CostSink, type Decider, type Decision, type DecisionInput, type Extracted, type Pot } from "./types";
+import { CATEGORY_HINTS, GIVING_GUIDE, type GivingKind, ALLOCATION_GUIDE, BUCKET_GUIDE, POT_GUIDE, decisionState, type TripBucket, type Allocation, type CostSink, type Decider, type Decision, type DecisionInput, type Extracted, type Pot } from "./types";
 
 const ENDPOINT = "https://openrouter.ai/api/v1/chat/completions";
 
@@ -133,7 +133,7 @@ export class OpenRouterHaiku implements Decider {
     const schema = {
       type: "object",
       additionalProperties: false,
-      required: ["category", "category_confidence", "allocation", "allocation_confidence", "pot", "pot_confidence", "trip_id", "trip_confidence", "trip_bucket"],
+      required: ["category", "category_confidence", "allocation", "allocation_confidence", "pot", "pot_confidence", "trip_id", "trip_confidence", "trip_bucket", "giving_kind"],
       properties: {
         category: { type: "string", enum: categories },
         category_confidence: { type: "number", minimum: 0, maximum: 1 },
@@ -144,6 +144,7 @@ export class OpenRouterHaiku implements Decider {
         trip_id: { type: ["string", "null"], enum: [...tripIds, null], description: "Trip this spend belongs to, or null." },
         trip_confidence: { type: "number", minimum: 0, maximum: 1 },
         trip_bucket: { type: ["string", "null"], enum: [...Object.keys(BUCKET_GUIDE), null] },
+        giving_kind: { type: ["string", "null"], enum: [...Object.keys(GIVING_GUIDE), null], description: "Only when allocation is giving." },
       },
     };
     const user = [
@@ -152,6 +153,7 @@ export class OpenRouterHaiku implements Decider {
       `Category notes: ${JSON.stringify(Object.fromEntries(categories.filter((c) => CATEGORY_HINTS[c]).map((c) => [c, CATEGORY_HINTS[c]])))}`,
       `Allocations: ${JSON.stringify(ALLOCATION_GUIDE)}`,
       `Household pots: ${JSON.stringify(POT_GUIDE)}`,
+      `Giving kinds: ${JSON.stringify(GIVING_GUIDE)}`,
       `Trip buckets: ${JSON.stringify(BUCKET_GUIDE)}. Trips (by id): ${JSON.stringify((input.trips ?? []).map((t) => ({ id: t.id, name: t.name, type: t.kind ?? "personal", from: t.start, to: t.end })))}`,
       `<context>\n${JSON.stringify(decisionState(input))}\n</context>`,
     ].join("\n");
@@ -159,7 +161,7 @@ export class OpenRouterHaiku implements Decider {
     try {
       const j = JSON.parse(r.content) as {
         category: string; category_confidence: number; allocation: Allocation; allocation_confidence: number; pot: Pot | null; pot_confidence: number;
-        trip_id: string | null; trip_confidence: number; trip_bucket: TripBucket | null;
+        trip_id: string | null; trip_confidence: number; trip_bucket: TripBucket | null; giving_kind: GivingKind | null;
       };
       return {
         category: categories.includes(j.category) ? j.category : null,
@@ -171,6 +173,7 @@ export class OpenRouterHaiku implements Decider {
         trip: j.trip_id && tripIds.includes(j.trip_id) ? j.trip_id : null,
         tripConfidence: clamp(j.trip_confidence),
         bucket: j.trip_id && j.trip_bucket && j.trip_bucket in BUCKET_GUIDE ? j.trip_bucket : null,
+        givingKind: j.giving_kind && j.giving_kind in GIVING_GUIDE ? j.giving_kind : null,
       };
     } catch {
       return { category: null, categoryConfidence: 0, allocation: null, allocationConfidence: 0, pot: null, potConfidence: 0 };

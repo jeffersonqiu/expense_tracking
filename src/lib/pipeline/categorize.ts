@@ -29,7 +29,7 @@ const RULES: Array<[RegExp, string]> = [
   [/\b(shopee|lazada|amazon|aliexpress|taobao|qoo10|gain city|courts|harvey norman|best denki|challenger|ishopchangi)\b/, "Shopping"],
   [/\b(hotel|hotels|marriott|hilton|hyatt|ritz|carlton|shangri ?la|four seasons|mandarin oriental|accor|novotel|ibis|sofitel|pullman|fairmont|swissotel|ihg|intercontinental|holiday inn|crowne plaza|westin|sheraton|st regis|w hotel|aloft|mercure|airbnb|agoda|booking com|hostel|resort|villa|ryokan|capsule)\b/, "Hotels"],
   [/\b(airline|airlines|airasia|scoot|singapore airlines|sia|jetstar|cathay pacific|garuda|batik|lion air|emirates|qatar|klook|trip com|traveloka|expedia|changi|airport)\b/, "Travel"],
-  [/\b(donation|donations|donate|charity|charities|giving sg|giving\.sg|givingsg|simplygiving|community chest|comchest|red cross|salvation army|food from the heart|willing hearts|sg enable|church|temple|mosque|tithe|tithes|offering|zakat|fidyah|ang ?bao|ang ?pow|hongbao)\b/, "Giving"],
+  [/\b(donation|donations|donate|charity|charities|giving sg|giving\.sg|givingsg|simplygiving|community chest|comchest|red cross|salvation army|food from the heart|willing hearts|sg enable|church|temple|mosque|tithe|tithes|offering|zakat|fidyah|ang ?bao|ang ?pow|hongbao|yayasan|gereja|panti asuhan|masjid|vihara|pura)\b/, "Giving"],
   [/\b(cinema|golden village|shaw|cathay|steam|playstation|nintendo)\b/, "Entertainment"],
 ];
 

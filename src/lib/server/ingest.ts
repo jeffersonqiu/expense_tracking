@@ -153,6 +153,7 @@ export async function ingestEmail(
       household_id: allocation === "household" ? householdId : null,
       // A project needs a specific project; the AI only proposes the pot, so "project" lands as allowance + review.
       household_pot: allocation === "household" ? (d.householdPot === "project" ? "allowance" : d.householdPot ?? "allowance") : null,
+      giving_kind: allocation === "giving" ? d.givingKind ?? "adhoc" : null,
       project_id: null,
       suggestion: d.suggestion,
       trip_id: d.tripId,

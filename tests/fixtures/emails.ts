@@ -171,3 +171,40 @@ export const unknownReceipt: IncomingEmail = {
   date: "2026-11-13T05:00:00Z",
   text: "Thanks for your order! Total charged: S$8.40. Paid with Visa ending 1111.",
 };
+
+// Wise "Transfer sent" (names and amounts are made up)
+const wiseBody = (headline: string, details: string) =>
+  ` Wise. Your account for the world's money\n\n| |\n| Hello Alex, |\n\n| |\n| # ${headline} |\n\n| |\n| Your money got there in just 4 seconds. |\n| ## Transfer details |\n| ${details} |\n\n| View transfer details |\n| Thanks, |\n| The Wise team |`;
+
+export const wiseToFoundation: IncomingEmail = {
+  ...base,
+  messageId: "wise1",
+  from: "Wise <noreply@wise.com>",
+  subject: "Transfer sent (#1111111111)",
+  date: "2026-11-28T05:19:00Z",
+  text: wiseBody("1,395,000 IDR is now in Yayasan Contoh Harapan's account.",
+    "Amount: 99.30 SGD Rate: 1 SGD = 14,221.50 IDR Wise fee: 1.21 SGD Sent at: 13:19 (GMT+08:00) on 28 November 2026 Transfer Number: #1111111111"),
+};
+
+export const wiseToPerson: IncomingEmail = {
+  ...wiseToFoundation,
+  messageId: "wise2",
+  subject: "Transfer sent (#2222222222)",
+  text: wiseBody("300,000 IDR is now in Budi Santoso's account.",
+    "Amount: 300,000 IDR Wise fee: 0 IDR Sent at: 17:17 (GMT+08:00) on 24 October 2026 Transfer Number: #2222222222"),
+};
+
+export const wiseToSelf: IncomingEmail = {
+  ...wiseToFoundation,
+  messageId: "wise3",
+  subject: "Transfer sent (#3333333333)",
+  text: wiseBody("9,057,500 IDR is now in your account.",
+    "Amount: 639.54 SGD Rate: 1 SGD = 14,221.50 IDR Wise fee: 2.60 SGD Sent at: 12:52 (GMT+08:00) on 28 November 2026 Transfer Number: #3333333333"),
+};
+
+export const wisePaused: IncomingEmail = {
+  ...wiseToFoundation,
+  messageId: "wise4",
+  subject: "Transfer of SGD to 200.0 SGD paused",
+  text: "We've paused your transfer. Please verify.",
+};

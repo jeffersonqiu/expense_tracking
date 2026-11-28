@@ -489,3 +489,11 @@ form:has(select[name="trip_id"] option[value="__new"]:checked) .when-newtrip { d
 .subtitle .tint { color: var(--tint); }
 .when-trip-only { display: none; }
 form:has(input[name="allocation"][value="trip"]:checked) .when-trip-only { display: block; }
+
+/* Giving allocation */
+.when-giving { display: none; }
+form:has(input[name="allocation"][value="giving"]:checked) .when-giving { display: block; }
+/* Five allocations on a phone: tighter labels so they fit on one row */
+@media (max-width: 480px) {
+  .seg-five .seg label span { font-size: 13px; padding-left: 2px; padding-right: 2px; letter-spacing: -0.01em; }
+}
