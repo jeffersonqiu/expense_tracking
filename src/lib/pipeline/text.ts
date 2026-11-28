@@ -133,3 +133,19 @@ export function amountAppearsIn(text: string, amount: number): boolean {
   }
   return false;
 }
+
+/**
+ * Email body for the AI: drop invisible characters, empty table cells and blank
+ * runs (Wise and bank emails pad the top with hundreds of them), so the real
+ * content fits in what the model reads.
+ */
+export function compactBody(text: string): string {
+  return text
+    .replace(/[​-‍⁠﻿͏­᠎]/g, "")
+    .replace(/ /g, " ")
+    .replace(/^[\s|]*$/gm, "")        // lines that are only pipes/spaces
+    .replace(/\|\s*\|/g, "|")          // empty table cells
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n\s*\n+/g, "\n")
+    .trim();
+}

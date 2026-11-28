@@ -4,7 +4,7 @@ import { runParsers } from "../src/lib/pipeline/parsers";
 import { processEmail, type ProcessContext } from "../src/lib/pipeline/process";
 import { findDuplicate } from "../src/lib/pipeline/dedupe";
 import { merchantKey, keywordCategory } from "../src/lib/pipeline/categorize";
-import { amountAppearsIn, parseSgtDate } from "../src/lib/pipeline/text";
+import { amountAppearsIn, compactBody, parseSgtDate } from "../src/lib/pipeline/text";
 import type { Decider } from "../src/lib/ai/types";
 
 function txn(email: Parameters<typeof runParsers>[0]) {
@@ -249,6 +249,14 @@ describe("wise", () => {
   });
   it("status updates are ignored", () => {
     expect(runParsers(F.wisePaused).type).toBe("ignored");
+  });
+});
+
+describe("compactBody", () => {
+  it("keeps the amount within what the AI reads when an email is padded", () => {
+    const padded = " Wise.\n" + "| |\n\n\u200b\u00a0".repeat(1500) + "| Amount: 4.47 SGD Wise fee: 0.95 SGD |";
+    expect(padded.slice(0, 6000)).not.toContain("Amount:");
+    expect(compactBody(padded).slice(0, 6000)).toContain("Amount: 4.47 SGD");
   });
 });
 

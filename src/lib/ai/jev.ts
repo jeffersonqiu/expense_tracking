@@ -1,3 +1,4 @@
+import { compactBody } from "../pipeline/text";
 import type { IncomingEmail, Kind } from "../pipeline/types";
 import { CATEGORY_HINTS, GIVING_GUIDE, type GivingKind, ALLOCATION_GUIDE, BUCKET_GUIDE, POT_GUIDE, decisionState, type TripBucket, type Allocation, type CostSink, type Decider, type Decision, type DecisionInput, type Extracted, type Pot } from "./types";
 
@@ -63,7 +64,7 @@ export class JevDecider implements Decider {
   }
 
   async extract(email: IncomingEmail): Promise<Extracted> {
-    const state = { from: email.from, subject: email.subject, received: email.date, body: email.text.slice(0, 6000) };
+    const state = { from: email.from, subject: email.subject, received: email.date, body: compactBody(email.text).slice(0, 6000) };
     const a = await this.decide_("is_transaction", state, {
       is_transaction: {
         type: "noul",

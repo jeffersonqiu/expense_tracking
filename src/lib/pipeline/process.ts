@@ -2,7 +2,7 @@ import type { IncomingEmail, ParsedTxn } from "./types";
 import type { Decider, Knowledge, TripBucket, TripOption } from "../ai/types";
 import { runParsers } from "./parsers";
 import { looksTransactional, prefilter } from "./filters";
-import { amountAppearsIn } from "./text";
+import { amountAppearsIn, compactBody } from "./text";
 import { displayMerchant, isHouseholdUtility, keywordCategory, merchantKey } from "./categorize";
 
 export interface ProcessContext {
@@ -147,7 +147,7 @@ export async function processEmail(email: IncomingEmail, ctx: ProcessContext): P
     if (ctx.ai && t.kind !== "transfer") {
       const knowledge = await ctx.knowledge({ merchantKey: key, merchantRaw: t.merchantRaw, counterparty: t.counterpartyType });
       const d = await ctx.ai.decide({
-        merchant: t.merchantRaw, amount: t.amount, currency: t.currency, snippet: email.text.slice(0, 1500),
+        merchant: t.merchantRaw, amount: t.amount, currency: t.currency, snippet: compactBody(email.text).slice(0, 1500),
         counterparty: t.counterpartyType, when: sgtWhen(t.occurredAt), paymentMethod: t.paymentMethod,
         keywordHint, utilityHint, hasHousehold: ctx.hasHousehold, knowledge,
         trips: nearbyTrips(ctx.trips ?? [], t.occurredAt),

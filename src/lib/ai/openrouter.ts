@@ -1,3 +1,4 @@
+import { compactBody } from "../pipeline/text";
 import type { IncomingEmail } from "../pipeline/types";
 import { CATEGORY_HINTS, GIVING_GUIDE, type GivingKind, ALLOCATION_GUIDE, BUCKET_GUIDE, POT_GUIDE, decisionState, type TripBucket, type Allocation, type CostSink, type Decider, type Decision, type DecisionInput, type Extracted, type Pot } from "./types";
 
@@ -109,7 +110,7 @@ export class OpenRouterHaiku implements Decider {
         kind: { type: "string", enum: ["spend", "refund", "investment", "transfer", "income"] },
       },
     };
-    const user = `From: ${email.from}\nSubject: ${email.subject}\nDate: ${email.date}\n\n<email>\n${email.text.slice(0, 6000)}\n</email>`;
+    const user = `From: ${email.from}\nSubject: ${email.subject}\nDate: ${email.date}\n\n<email>\n${compactBody(email.text).slice(0, 6000)}\n</email>`;
     const r = await this.chat("extract_transaction", user, schema);
     try {
       const j = JSON.parse(r.content) as {

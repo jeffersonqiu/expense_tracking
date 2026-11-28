@@ -1,4 +1,6 @@
 import { getContext } from "@/lib/server/context";
+import { reparsePending } from "@/lib/server/reparse";
+import { adminClient } from "@/lib/supabase/admin";
 import { Shell, Header } from "../ui/Shell";
 import { IconCheckCircle, IconSparkle } from "../ui/Icons";
 import { Toast } from "../ui/Toast";
@@ -14,7 +16,8 @@ export const metadata = { title: "Review · Expenses" };
 
 export default async function ReviewPage({ searchParams }: { searchParams: Promise<{ error?: string; ok?: string; done?: string }> }) {
   const flash = await searchParams;
-  const { db, uid, categories, households, projects, trips, pendingCount } = await getContext();
+  const { db, uid, profile, categories, households, projects, trips, pendingCount } = await getContext();
+  await reparsePending(adminClient(), uid, profile?.base_currency ?? "SGD").catch((e) => console.error("reparsePending", e));
   const { data } = await db
     .from("transactions")
     .select("*, source_emails(subject, from_address, body_text), shared_shares(person_name, amount, settled_at)")
