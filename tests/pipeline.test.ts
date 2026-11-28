@@ -115,9 +115,11 @@ describe("dedupe", () => {
 });
 
 describe("processEmail", () => {
-  const ctx = (ai: Decider | null = null, memory: ProcessContext["memory"] = async () => null): ProcessContext => ({
+  const NO_DECISION = { category: null, categoryConfidence: 0, allocation: null, allocationConfidence: 0, pot: null, potConfidence: 0 };
+  const ctx = (ai: Decider | null = null, knowledge: ProcessContext["knowledge"] = async () => ({ facts: [], examples: [] })): ProcessContext => ({
     ai,
-    memory,
+    knowledge,
+    hasHousehold: true,
     categories: ["Food", "Transport", "Shopping", "Other"],
   });
 
@@ -127,10 +129,27 @@ describe("processEmail", () => {
     expect(out.drafts[0]).toMatchObject({ categoryName: "Transport", classifier: "rules", merchant: "TADA" });
   });
 
-  it("merchant memory wins over keyword rules", async () => {
-    const out = await processEmail(F.uobPaynowIndividual, ctx(null, async (k) =>
-      k === "royxx ox wex yaxx" ? { categoryName: "Food", kind: "spend", allocation: "household" } : null));
-    expect(out.drafts[0]).toMatchObject({ categoryName: "Food", allocation: "household", classifier: "memory" });
+  it("AI decides category and allocation using the user's knowledge", async () => {
+    let seen: { facts: string[]; examples: unknown[] } | null = null;
+    const ai: Decider = {
+      name: "fake",
+      extract: async () => ({ isTransaction: false, confidence: 0 }),
+      decide: async (input) => {
+        seen = input.knowledge;
+        return { category: "Food", categoryConfidence: 0.9, allocation: "work", allocationConfidence: 0.8, pot: null, potConfidence: 0 };
+      },
+    };
+    const out = await processEmail(F.uobPaynowIndividual, ctx(ai, async () => ({
+      facts: ["Weekday lunch PayNow to people is usually Food"], examples: [],
+    })));
+    expect(out.drafts[0]).toMatchObject({ categoryName: "Food", allocation: "work", classifier: "fake" });
+    expect(out.drafts[0]!.suggestion).toMatchObject({ category: "Food", allocation: "work", source: "fake" });
+    expect(seen!.facts).toEqual(["Weekday lunch PayNow to people is usually Food"]);
+  });
+
+  it("without AI, keyword rules give a fallback suggestion", async () => {
+    const out = await processEmail(F.tadaReceipt, ctx());
+    expect(out.drafts[0]!.suggestion).toMatchObject({ category: "Transport", allocation: "personal", source: "rules" });
   });
 
   it("rejects promotions and newsletters", async () => {
@@ -146,7 +165,7 @@ describe("processEmail", () => {
     const ai: Decider = {
       name: "fake",
       extract: async () => ({ isTransaction: true, confidence: 0.9, amount: 9.99, currency: "SGD", merchant: "Some Cafe", kind: "spend" }),
-      pickCategory: async () => ({ category: "Food", confidence: 0.8 }),
+      decide: async () => ({ ...NO_DECISION, category: "Food", categoryConfidence: 0.8, allocation: "personal", allocationConfidence: 0.7 }),
     };
     const out = await processEmail(F.unknownReceipt, ctx(ai));
     expect(out.drafts[0]).toMatchObject({ merchant: "Some Cafe", needsManualAmount: true, categoryName: "Food" });
@@ -169,7 +188,7 @@ describe("household utilities", () => {
   it("new utility emails arrive pre-filed as Household -> Bills", async () => {
     const out = await processEmail(
       { ...F.uobCard, messageId: "u1", text: F.uobCard.text.replace("GAIN CITY-FUNAN MAIN", "PACIFICLIGHT ENERGY") },
-      { ai: null, memory: async () => null, categories: ["Bills", "Other"] },
+      { ai: null, knowledge: async () => ({ facts: [], examples: [] }), categories: ["Bills", "Other"], hasHousehold: true },
     );
     expect(out.drafts[0]).toMatchObject({ allocation: "household", householdPot: "bills", categoryName: "Bills" });
   });

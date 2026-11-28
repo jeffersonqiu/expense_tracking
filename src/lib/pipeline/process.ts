@@ -1,25 +1,26 @@
 import type { IncomingEmail, ParsedTxn } from "./types";
-import type { Decider } from "../ai/types";
+import type { Decider, Knowledge } from "../ai/types";
 import { runParsers } from "./parsers";
 import { looksTransactional, prefilter } from "./filters";
 import { amountAppearsIn } from "./text";
 import { displayMerchant, isHouseholdUtility, keywordCategory, merchantKey } from "./categorize";
 
-export interface MerchantMemory {
-  categoryName: string | null;
-  kind: ParsedTxn["kind"] | null;
-  allocation: string | null;
-  autoAccept?: boolean;
-  householdPot?: string | null;
-  projectId?: string | null;
-}
-
 export interface ProcessContext {
-  /** Look up the user's learned rule for a merchant key. */
-  memory: (key: string) => Promise<MerchantMemory | null>;
+  /** Facts and similar past decisions relevant to this spend (from the learning loop). */
+  knowledge: (q: { merchantKey: string; merchantRaw: string; counterparty: string }) => Promise<Knowledge>;
   /** AI is optional: null when disabled or over budget. */
   ai: Decider | null;
   categories: string[];
+  hasHousehold: boolean;
+}
+
+/** What the AI (or the fallback rules) proposed, kept to compare with the final decision. */
+export interface Suggestion {
+  category: string | null;
+  allocation: string | null;
+  pot: string | null;
+  confidence: { category: number; allocation: number; pot: number };
+  source: string;
 }
 
 export interface Draft extends ParsedTxn {
@@ -30,9 +31,8 @@ export interface Draft extends ParsedTxn {
   confidence: number;
   classifier: string;
   needsManualAmount: boolean;
-  autoAccept: boolean;
   householdPot: string | null;
-  projectId: string | null;
+  suggestion: Suggestion;
 }
 
 export interface ProcessOutcome {
@@ -92,50 +92,45 @@ export async function processEmail(email: IncomingEmail, ctx: ProcessContext): P
   const drafts: Draft[] = [];
   for (const t of txns) {
     const key = merchantKey(t.merchantRaw);
-    const mem = await ctx.memory(key);
-    let categoryName: string | null = null;
-    let catConfidence = 0;
-    let catClassifier = classifier;
+    const keywordHint = keywordCategory(t.merchantRaw, t.categoryHint);
+    const utilityHint = isHouseholdUtility(t.merchantRaw);
 
-    if (mem?.categoryName) {
-      categoryName = mem.categoryName;
-      catConfidence = 0.95;
-      catClassifier = "memory";
-    } else {
-      const kw = keywordCategory(t.merchantRaw, t.categoryHint);
-      if (kw) {
-        categoryName = kw;
-        catConfidence = t.categoryHint ? 0.95 : 0.8;
-        catClassifier = "rules";
-      } else if (ctx.ai && t.kind !== "transfer") {
-        const pick = await ctx.ai.pickCategory(
-          {
-            merchant: t.merchantRaw, amount: t.amount, currency: t.currency, snippet: email.text.slice(0, 1500),
-            counterparty: t.counterpartyType, when: sgtWhen(t.occurredAt), paymentMethod: t.paymentMethod,
-          },
-          ctx.categories,
-        );
-        if (pick.category && ctx.categories.includes(pick.category)) {
-          categoryName = pick.category;
-          catConfidence = pick.confidence;
-          catClassifier = ctx.ai.name;
-        }
-      }
+    // Fallback when AI is off: keyword category, utilities as household bills.
+    let suggestion: Suggestion = {
+      category: keywordHint,
+      allocation: utilityHint && ctx.hasHousehold ? "household" : "personal",
+      pot: utilityHint && ctx.hasHousehold ? "bills" : null,
+      confidence: { category: keywordHint ? 0.7 : 0, allocation: 0.5, pot: utilityHint ? 0.6 : 0 },
+      source: "rules",
+    };
+
+    if (ctx.ai && t.kind !== "transfer") {
+      const knowledge = await ctx.knowledge({ merchantKey: key, merchantRaw: t.merchantRaw, counterparty: t.counterpartyType });
+      const d = await ctx.ai.decide({
+        merchant: t.merchantRaw, amount: t.amount, currency: t.currency, snippet: email.text.slice(0, 1500),
+        counterparty: t.counterpartyType, when: sgtWhen(t.occurredAt), paymentMethod: t.paymentMethod,
+        keywordHint, utilityHint, hasHousehold: ctx.hasHousehold, knowledge,
+      }, ctx.categories);
+      suggestion = {
+        category: d.category ?? keywordHint,
+        allocation: d.allocation === "household" && !ctx.hasHousehold ? "personal" : d.allocation ?? suggestion.allocation,
+        pot: d.allocation === "household" && ctx.hasHousehold ? d.pot ?? "allowance" : null,
+        confidence: { category: d.categoryConfidence, allocation: d.allocationConfidence, pot: d.potConfidence },
+        source: classifier === "rules" ? ctx.ai.name : classifier,
+      };
     }
 
     drafts.push({
       ...t,
-      kind: mem?.kind ?? t.kind,
       merchant: displayMerchant(t.merchantRaw),
       merchantKey: key,
-      categoryName,
-      allocation: mem?.allocation ?? (isHouseholdUtility(t.merchantRaw) ? "household" : null),
-      confidence: Math.min(baseConfidence, categoryName ? catConfidence : 0.5),
-      classifier: catClassifier,
+      categoryName: suggestion.category,
+      allocation: suggestion.allocation,
+      householdPot: suggestion.allocation === "household" ? suggestion.pot : null,
+      confidence: Math.min(baseConfidence, suggestion.category ? suggestion.confidence.category || 0.5 : 0.5),
+      classifier: suggestion.source,
       needsManualAmount,
-      autoAccept: !!mem?.autoAccept && !needsManualAmount && !!categoryName,
-      householdPot: mem?.householdPot ?? (!mem?.allocation && isHouseholdUtility(t.merchantRaw) ? "bills" : null),
-      projectId: mem?.projectId ?? null,
+      suggestion,
     });
   }
 

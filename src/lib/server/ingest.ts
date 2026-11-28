@@ -9,6 +9,8 @@ import { JevDecider } from "../ai/jev";
 import type { Decider } from "../ai/types";
 import { env } from "../env";
 import { fxRate, toBase } from "./fx";
+import { knowledgeFor } from "./knowledge";
+import type { Knowledge } from "../ai/types";
 
 const BODY_LIMIT = 20_000;
 
@@ -48,7 +50,11 @@ export interface IngestResult {
 }
 
 /** Processes one email for one user. Safe to call twice for the same message. */
-export async function ingestEmail(db: SupabaseClient, userId: string, email: IncomingEmail, ai: Decider | null): Promise<IngestResult> {
+export type KnowledgeLookup = (q: { merchantKey: string; merchantRaw: string; counterparty: string }) => Promise<Knowledge>;
+
+export async function ingestEmail(
+  db: SupabaseClient, userId: string, email: IncomingEmail, ai: Decider | null, knowledge?: KnowledgeLookup,
+): Promise<IngestResult> {
   const existing = await db.from("source_emails").select("id").eq("user_id", userId).eq("gmail_message_id", email.messageId).maybeSingle();
   if (existing.data) return { messageId: email.messageId, status: "duplicate_email" };
 
@@ -61,24 +67,13 @@ export async function ingestEmail(db: SupabaseClient, userId: string, email: Inc
   const householdId: string | null = ownHh.data?.[0]?.id ?? memberHh.data?.[0]?.household_id ?? null;
   const categories = catRes.data ?? [];
   const catByName = new Map(categories.map((c) => [c.name as string, c.id as string]));
-  const catById = new Map(categories.map((c) => [c.id as string, c.name as string]));
   const base = (profileRes.data?.base_currency as string) ?? "SGD";
 
   const ctx = {
     categories: categories.map((c) => c.name as string),
     ai,
-    memory: async (key: string) => {
-      const r = await db.from("merchant_rules").select("category_id, kind, allocation, auto_accept, household_pot, project_id").eq("user_id", userId).eq("merchant_key", key).maybeSingle();
-      if (!r.data) return null;
-      return {
-        categoryName: r.data.category_id ? catById.get(r.data.category_id) ?? null : null,
-        kind: r.data.kind,
-        allocation: r.data.allocation,
-        autoAccept: !!r.data.auto_accept,
-        householdPot: r.data.household_pot as string | null,
-        projectId: r.data.project_id as string | null,
-      };
-    },
+    hasHousehold: !!householdId,
+    knowledge: knowledge ?? (ai ? await knowledgeFor(db, userId) : async () => ({ facts: [], examples: [] })),
   };
 
   let outcome: ProcessOutcome;
@@ -149,13 +144,15 @@ export async function ingestEmail(db: SupabaseClient, userId: string, email: Inc
       source_role: d.role,
       category_id: d.categoryName ? catByName.get(d.categoryName) ?? null : null,
       description: d.description ?? null,
-      status: isDup ? "rejected" : d.autoAccept ? "confirmed" : "pending",
+      status: isDup ? "rejected" : "pending",
       duplicate_of: isDup ? dup.of : null,
       allocation,
       claim_status: allocation === "work" ? "to_claim" : null,
       household_id: allocation === "household" ? householdId : null,
-      household_pot: allocation === "household" ? (d.householdPot === "project" && !d.projectId ? "allowance" : d.householdPot ?? "allowance") : null,
-      project_id: allocation === "household" && d.householdPot === "project" ? d.projectId ?? null : null,
+      // A project needs a specific project; the AI only proposes the pot, so "project" lands as allowance + review.
+      household_pot: allocation === "household" ? (d.householdPot === "project" ? "allowance" : d.householdPot ?? "allowance") : null,
+      project_id: null,
+      suggestion: d.suggestion,
       confidence: d.confidence,
       classifier: d.classifier,
       needs_manual_amount: d.needsManualAmount,

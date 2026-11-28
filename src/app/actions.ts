@@ -9,7 +9,9 @@ import { adminClient } from "@/lib/supabase/admin";
 import { fxRate, toBase } from "@/lib/server/fx";
 import { newIngestKey } from "@/lib/server/security";
 import { fromLocalInput } from "@/lib/format";
-import { keywordCategory, merchantKey, displayMerchant } from "@/lib/pipeline/categorize";
+import { keywordCategory, merchantKey, displayMerchant, isHouseholdUtility } from "@/lib/pipeline/categorize";
+import { knowledgeFor } from "@/lib/server/knowledge";
+import { learnForUser } from "@/lib/server/learn";
 import { sgtWhen } from "@/lib/pipeline/process";
 import { makeDecider } from "@/lib/server/ingest";
 
@@ -59,8 +61,6 @@ const TxnForm = z.object({
   new_project_name: z.string().trim().max(80).optional(),
   description: z.string().transform((v) => v.slice(0, 500)).optional(),
   shares: z.string().max(2000).optional(),
-  remember: z.string().optional(),
-  auto_accept: z.string().optional(),
   return_to: z.string().optional(),
 });
 
@@ -73,7 +73,7 @@ const FIELD_LABELS: Record<string, string> = {
 
 /** Accept / reject / save one transaction (also creates manual ones when id is empty). */
 export async function saveTransaction(fd: FormData) {
-  const { db, uid, profile } = await getContext();
+  const { db, uid, profile, categories, projects } = await getContext();
   const returnTo = str(fd, "return_to") || "/review";
   const parsed = TxnForm.safeParse(Object.fromEntries(fd));
   if (!parsed.success) {
@@ -131,6 +131,11 @@ export async function saveTransaction(fd: FormData) {
   };
 
   let id = f.id || "";
+  const before = id
+    ? (await db.from("transactions")
+        .select("suggestion, merchant_raw, merchant, counterparty_type, payment_method, occurred_at, category_id, allocation, household_pot, classifier, confidence, source_emails(body_text)")
+        .eq("id", id).eq("user_id", uid).maybeSingle()).data
+    : null;
   if (id) {
     const { error } = await db.from("transactions").update(fields).eq("id", id).eq("user_id", uid);
     if (error) {
@@ -161,31 +166,42 @@ export async function saveTransaction(fd: FormData) {
     if (shares.length) await db.from("shared_shares").insert(shares);
   }
 
-  // Learn from the decision (merchant memory)
-  if (f.decision === "accept" && f.remember && f.merchant) {
-    // Apply the same choice to other cards from this merchant still waiting in Review.
-    await db.from("transactions").update({
-      category_id: f.category_id || null,
-      kind: f.kind,
-      allocation: allocation === "shared" ? "personal" : allocation,
-      claim_status: allocation === "work" ? f.claim_status || "to_claim" : null,
-      household_id: allocation === "household" ? f.household_id || null : null,
-      household_pot: allocation === "household" ? pot : null,
-      project_id: allocation === "household" ? projectId : null,
-      classifier: "memory",
-      confidence: 0.95,
-    }).eq("user_id", uid).eq("merchant_key", key).eq("status", "pending").neq("id", id);
-    await db.from("merchant_rules").upsert({
+  // Log the decision for the learning loop (what was suggested vs what you chose).
+  if (before || !f.id) {
+    const catName = (cid: string | null | undefined) => categories.find((c) => c.id === cid)?.name ?? null;
+    type Sug = { category?: string | null; allocation?: string | null; pot?: string | null; confidence?: Record<string, number>; source?: string };
+    const suggested: Sug = (before?.suggestion as Sug | null) ?? (before ? {
+      category: catName(before.category_id), allocation: before.allocation, pot: before.household_pot,
+      confidence: { category: Number(before.confidence ?? 0) }, source: before.classifier ?? "unknown",
+    } : {});
+    const finalCategory = catName(f.category_id || null);
+    const finalAllocation = allocation;
+    const finalPot = pot;
+    const email = before?.source_emails as unknown as { body_text?: string } | null;
+    const { error: logErr } = await db.from("decision_log").insert({
       user_id: uid,
+      transaction_id: id,
+      decision: f.decision,
+      merchant: (before?.merchant_raw ?? before?.merchant ?? f.merchant) || null,
       merchant_key: key,
-      category_id: f.category_id || null,
-      kind: f.kind,
-      allocation: allocation === "shared" ? "personal" : allocation,
-      household_pot: pot,
-      project_id: projectId,
-      auto_accept: !!f.auto_accept,
-      updated_at: new Date().toISOString(),
+      amount: f.amount,
+      currency: f.currency,
+      occurred_at: occurred,
+      local_time: sgtWhen(occurred),
+      counterparty_type: before?.counterparty_type ?? null,
+      payment_method: before?.payment_method ?? null,
+      snippet: email?.body_text?.replace(/\s+/g, " ").slice(0, 400) ?? f.description ?? null,
+      suggested,
+      final_category: finalCategory,
+      final_kind: f.kind,
+      final_allocation: finalAllocation,
+      final_pot: finalPot,
+      final_project: projectId ? projects.find((p) => p.id === projectId)?.name ?? f.new_project_name ?? null : null,
+      corrected_category: !!f.id && f.decision !== "reject" && (suggested.category ?? null) !== finalCategory,
+      corrected_allocation: !!f.id && f.decision !== "reject" && (suggested.allocation ?? "personal") !== finalAllocation,
+      corrected_pot: !!f.id && f.decision !== "reject" && finalAllocation === "household" && (suggested.pot ?? null) !== finalPot,
     });
+    if (logErr) console.error("decision_log", logErr);
   }
 
   revalidatePath("/", "layout");
@@ -392,7 +408,7 @@ export async function promoteEmail(fd: FormData) {
 
 /** Fill in categories for pending spends that don't have one yet (memory -> rules -> AI). */
 export async function suggestCategories() {
-  const { db, uid, categories } = await getContext();
+  const { db, uid, categories, households } = await getContext();
   const { data } = await db.from("transactions")
     .select("id, merchant, merchant_raw, merchant_key, amount, currency, occurred_at, counterparty_type, payment_method, kind, source_emails(body_text)")
     .eq("user_id", uid).eq("status", "pending").is("duplicate_of", null).is("category_id", null)
@@ -400,51 +416,49 @@ export async function suggestCategories() {
   const rows = data ?? [];
   if (rows.length === 0) back("/review", "Every waiting spend already has a category.", "ok");
 
+  const admin = adminClient();
+  const ai = await makeDecider(admin, uid).catch(() => null);
+  if (!ai) back("/review", "AI is off or over budget: check Settings → AI and cost.");
+  const knowledge = await knowledgeFor(admin, uid);
   const byName = new Map(categories.map((c) => [c.name, c.id]));
-  const ai = await makeDecider(adminClient(), uid).catch(() => null);
+  const hasHousehold = households.length > 0;
   let filled = 0;
   let aiFailed = false;
 
   const one = async (t: (typeof rows)[number]) => {
     const raw = t.merchant_raw ?? t.merchant ?? "";
-    const key = t.merchant_key ?? merchantKey(raw);
-    let name: string | null = null;
-    let classifier = "rules";
-    let confidence = 0.8;
-
-    const rule = await db.from("merchant_rules").select("category_id").eq("user_id", uid).eq("merchant_key", key).maybeSingle();
-    if (rule.data?.category_id) {
-      await db.from("transactions").update({ category_id: rule.data.category_id, classifier: "memory", confidence: 0.95 }).eq("id", t.id).eq("user_id", uid);
+    try {
+      const email = t.source_emails as unknown as { body_text: string } | null;
+      const d = await ai.decide({
+        merchant: raw, amount: Number(t.amount), currency: t.currency, snippet: email?.body_text?.slice(0, 1500) ?? "",
+        counterparty: t.counterparty_type ?? undefined, when: sgtWhen(t.occurred_at), paymentMethod: t.payment_method ?? undefined,
+        keywordHint: keywordCategory(raw), utilityHint: isHouseholdUtility(raw), hasHousehold,
+        knowledge: await knowledge({ merchantKey: t.merchant_key ?? merchantKey(raw), merchantRaw: raw, counterparty: t.counterparty_type ?? "unknown" }),
+      }, categories.map((c) => c.name));
+      const catId = d.category ? byName.get(d.category) : undefined;
+      if (!catId) return;
+      const allocation = d.allocation === "household" && !hasHousehold ? "personal" : d.allocation ?? "personal";
+      const pot = allocation === "household" ? (d.pot === "project" ? "allowance" : d.pot ?? "allowance") : null;
+      const suggestion = {
+        category: d.category, allocation, pot, source: ai.name,
+        confidence: { category: d.categoryConfidence, allocation: d.allocationConfidence, pot: d.potConfidence },
+      };
+      await db.from("transactions").update({
+        category_id: catId, allocation, household_pot: pot,
+        household_id: allocation === "household" ? households[0]!.id : null,
+        claim_status: allocation === "work" ? "to_claim" : null,
+        classifier: ai.name, confidence: d.categoryConfidence, suggestion,
+      }).eq("id", t.id).eq("user_id", uid);
       filled++;
-      return;
-    }
-    name = keywordCategory(raw);
-    if (!name && ai) {
-      try {
-        const email = t.source_emails as unknown as { body_text: string } | null;
-        const pick = await ai.pickCategory({
-          merchant: raw, amount: Number(t.amount), currency: t.currency, snippet: email?.body_text?.slice(0, 1500) ?? "",
-          counterparty: t.counterparty_type ?? undefined, when: sgtWhen(t.occurred_at), paymentMethod: t.payment_method ?? undefined,
-        }, categories.map((c) => c.name));
-        name = pick.category;
-        classifier = ai.name;
-        confidence = pick.confidence;
-      } catch (err) {
-        console.error("suggestCategories AI", err);
-        aiFailed = true;
-      }
-    }
-    const id = name ? byName.get(name) : undefined;
-    if (id) {
-      await db.from("transactions").update({ category_id: id, classifier, confidence }).eq("id", t.id).eq("user_id", uid);
-      filled++;
+    } catch (err) {
+      console.error("suggestCategories AI", err);
+      aiFailed = true;
     }
   };
 
   for (let i = 0; i < rows.length; i += 5) await Promise.all(rows.slice(i, i + 5).map(one));
   revalidatePath("/review");
-  const note = !ai ? " AI is off: check Settings → AI and cost." : aiFailed ? " Some AI calls failed or hit the monthly cap." : "";
-  back("/review", `Suggested categories for ${filled} of ${rows.length} spends.${note}`, filled ? "ok" : "error");
+  back("/review", `Suggested categories for ${filled} of ${rows.length} spends.${aiFailed ? " Some AI calls failed or hit the monthly cap." : ""}`, filled ? "ok" : "error");
 }
 
 /** Put an accepted/rejected spend back into the review queue. */
@@ -456,6 +470,10 @@ export async function undoReview(fd: FormData) {
     .eq("id", id).eq("user_id", uid).in("status", ["confirmed", "rejected"]).is("duplicate_of", null)
     .select("merchant").maybeSingle();
   if (error || !data) back("/review", "Couldn't undo that one.");
+  // The decision was reverted: don't let the learning loop learn from it.
+  const last = await adminClient().from("decision_log").select("id").eq("user_id", uid).eq("transaction_id", id)
+    .order("decided_at", { ascending: false }).limit(1).maybeSingle();
+  if (last.data) await adminClient().from("decision_log").delete().eq("id", last.data.id).eq("user_id", uid);
   revalidatePath("/", "layout");
   back("/review", `${data.merchant ?? "Spend"} is back in Review.`, "ok");
 }
@@ -488,4 +506,20 @@ export async function setProjectStatus(fd: FormData) {
   await db.from("household_projects").update({ status }).eq("id", str(fd, "id"));
   revalidatePath("/", "layout");
   back("/settings", status === "closed" ? "Project closed." : "Project reopened.", "ok");
+}
+
+/** Settings → "Learn now": run the learning loop for the signed-in user. */
+export async function learnNow() {
+  const { uid } = await getContext();
+  const r = await learnForUser(adminClient(), uid);
+  revalidatePath("/settings");
+  back("/settings", r.ok ? `${r.summary} (${r.added} new, ${r.updated} refined, ${r.retired} retired)` : r.summary, r.ok ? "ok" : "error");
+}
+
+/** Switch off a learned fact the user says is wrong. */
+export async function retireFact(fd: FormData) {
+  const { db, uid } = await getContext();
+  await db.from("knowledge_facts").update({ active: false, updated_at: new Date().toISOString() }).eq("id", str(fd, "id")).eq("user_id", uid);
+  revalidatePath("/settings");
+  back("/settings", "Removed. The app won't use that fact any more.", "ok");
 }

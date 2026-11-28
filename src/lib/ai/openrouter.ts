@@ -1,11 +1,12 @@
 import type { IncomingEmail } from "../pipeline/types";
-import type { CategoryInput, CostSink, Decider, Extracted } from "./types";
+import { ALLOCATION_GUIDE, POT_GUIDE, decisionState, type Allocation, type CostSink, type Decider, type Decision, type DecisionInput, type Extracted, type Pot } from "./types";
 
 const ENDPOINT = "https://openrouter.ai/api/v1/chat/completions";
 
 /** Fallback prices (USD per 1M tokens) when OpenRouter doesn't return a cost. */
 const PRICES: Record<string, { in: number; out: number }> = {
   "anthropic/claude-haiku-5.5": { in: 0.1, out: 0.5 },
+  "anthropic/claude-sonnet-5.5": { in: 2, out: 10 },
 };
 
 const SYSTEM = [
@@ -19,6 +20,38 @@ interface ChatResult {
   inputTokens: number;
   outputTokens: number;
   cost: number;
+}
+
+/** One structured-output chat call to any OpenRouter model, reporting its cost. */
+export async function openRouterJson<T>(opts: {
+  apiKey: string; model: string; purpose: string; system: string; user: string;
+  schema: Record<string, unknown>; maxTokens: number; timeoutMs: number; onCost: CostSink;
+}): Promise<T> {
+  const res = await fetch(ENDPOINT, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${opts.apiKey}`, "Content-Type": "application/json", "X-Title": "Expense Tracker" },
+    body: JSON.stringify({
+      model: opts.model,
+      max_tokens: opts.maxTokens,
+      messages: [{ role: "system", content: opts.system }, { role: "user", content: opts.user }],
+      response_format: { type: "json_schema", json_schema: { name: opts.purpose, strict: true, schema: opts.schema } },
+      usage: { include: true },
+    }),
+    signal: AbortSignal.timeout(opts.timeoutMs),
+  });
+  if (!res.ok) throw new Error(`OpenRouter ${res.status}`);
+  const body = (await res.json()) as {
+    choices?: { message?: { content?: string } }[];
+    usage?: { prompt_tokens?: number; completion_tokens?: number; cost?: number };
+  };
+  const inputTokens = body.usage?.prompt_tokens ?? 0;
+  const outputTokens = body.usage?.completion_tokens ?? 0;
+  const price = PRICES[opts.model] ?? { in: 3, out: 15 };
+  await opts.onCost({
+    model: opts.model, purpose: opts.purpose, inputTokens, outputTokens,
+    costUsd: body.usage?.cost ?? (inputTokens * price.in + outputTokens * price.out) / 1e6,
+  });
+  return JSON.parse(body.choices?.[0]?.message?.content ?? "null") as T;
 }
 
 export class OpenRouterHaiku implements Decider {
@@ -95,31 +128,42 @@ export class OpenRouterHaiku implements Decider {
     }
   }
 
-  async pickCategory(input: CategoryInput, categories: string[]) {
+  async decide(input: DecisionInput, categories: string[]): Promise<Decision> {
     const schema = {
       type: "object",
       additionalProperties: false,
-      required: ["category", "confidence"],
+      required: ["category", "category_confidence", "allocation", "allocation_confidence", "pot", "pot_confidence"],
       properties: {
         category: { type: "string", enum: categories },
-        confidence: { type: "number", minimum: 0, maximum: 1 },
+        category_confidence: { type: "number", minimum: 0, maximum: 1 },
+        allocation: { type: "string", enum: Object.keys(ALLOCATION_GUIDE) },
+        allocation_confidence: { type: "number", minimum: 0, maximum: 1 },
+        pot: { type: ["string", "null"], enum: [...Object.keys(POT_GUIDE), null], description: "Only when allocation is household." },
+        pot_confidence: { type: "number", minimum: 0, maximum: 1 },
       },
     };
     const user = [
-      "Pick the best spending category for this Singapore transaction.",
-      `Merchant: ${input.merchant}`,
-      `Paid to: ${input.counterparty === "individual" ? "a person (PayNow/phone), often a hawker, driver or small shop" : "a business"}`,
-      `Amount: ${input.currency} ${input.amount}`,
-      input.when ? `Local time: ${input.when}` : "",
-      input.paymentMethod ? `Payment method: ${input.paymentMethod}` : "",
-      `<email_excerpt>\n${input.snippet}\n</email_excerpt>`,
-    ].filter(Boolean).join("\n");
-    const r = await this.chat("pick_category", user, schema, 100);
+      "Decide how this user files this spend. Follow what we know about the user and their similar past decisions;",
+      "corrections show what the AI previously got wrong. The same merchant can be filed differently depending on context.",
+      `Allocations: ${JSON.stringify(ALLOCATION_GUIDE)}`,
+      `Household pots: ${JSON.stringify(POT_GUIDE)}`,
+      `<context>\n${JSON.stringify(decisionState(input))}\n</context>`,
+    ].join("\n");
+    const r = await this.chat("decide", user, schema, 200);
     try {
-      const j = JSON.parse(r.content) as { category: string; confidence: number };
-      return { category: categories.includes(j.category) ? j.category : null, confidence: clamp(j.confidence) };
+      const j = JSON.parse(r.content) as {
+        category: string; category_confidence: number; allocation: Allocation; allocation_confidence: number; pot: Pot | null; pot_confidence: number;
+      };
+      return {
+        category: categories.includes(j.category) ? j.category : null,
+        categoryConfidence: clamp(j.category_confidence),
+        allocation: j.allocation in ALLOCATION_GUIDE ? j.allocation : null,
+        allocationConfidence: clamp(j.allocation_confidence),
+        pot: j.pot && j.pot in POT_GUIDE ? j.pot : null,
+        potConfidence: clamp(j.pot_confidence),
+      };
     } catch {
-      return { category: null, confidence: 0 };
+      return { category: null, categoryConfidence: 0, allocation: null, allocationConfidence: 0, pot: null, potConfidence: 0 };
     }
   }
 }

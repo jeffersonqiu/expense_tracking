@@ -3,6 +3,7 @@ import { z } from "zod";
 import { adminClient } from "@/lib/supabase/admin";
 import { bearer, sha256 } from "@/lib/server/security";
 import { ingestEmail, makeDecider, type IngestResult } from "@/lib/server/ingest";
+import { knowledgeFor } from "@/lib/server/knowledge";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -51,10 +52,11 @@ export async function POST(req: Request) {
   ]);
 
   const ai = body.emails.length ? await makeDecider(db, userId) : null;
+  const knowledge = ai ? await knowledgeFor(db, userId) : undefined;
   const results: IngestResult[] = [];
   for (const email of body.emails) {
     try {
-      results.push(await ingestEmail(db, userId, email, ai));
+      results.push(await ingestEmail(db, userId, email, ai, knowledge));
     } catch (err) {
       console.error("ingest failed", email.messageId, err);
       results.push({ messageId: email.messageId, status: "error" });

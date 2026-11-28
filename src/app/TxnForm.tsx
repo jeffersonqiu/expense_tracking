@@ -18,6 +18,7 @@ export interface TxnRow {
   claim_status: string | null;
   household_id: string | null;
   household_pot?: string | null;
+  suggestion?: unknown;
   project_id?: string | null;
   description: string | null;
   payment_method: string | null;
@@ -52,6 +53,7 @@ function Segmented({ name, value, options }: { name: string; value: string; opti
 
 function suggestionSource(classifier: string | null, confidence: number | null): string {
   if (classifier === "memory") return "From your past choice";
+  if (confidence != null && confidence < 50 && (classifier === "jev" || classifier === "haiku")) return `Not sure · ${confidence}%`;
   if (classifier === "rules") return "Suggested by keyword";
   if (classifier === "jev" || classifier === "haiku") {
     return `Suggested by ${classifier === "jev" ? "Jev" : "AI"}${confidence != null ? ` · ${confidence}%` : ""}`;
@@ -78,7 +80,7 @@ export function TxnForm({
   const openProjects = projects.filter((p) => p.status === "open");
   const catName = categories.find((c) => c.id === txn?.category_id)?.name;
   // A utility that arrived as Personal (nothing remembered yet) is suggested as a household bill.
-  const utilityHint = !!txn && txn.status === "pending" && txn.allocation === "personal" && txn.classifier !== "memory"
+  const utilityHint = !!txn && txn.status === "pending" && txn.allocation === "personal" && !txn.suggestion
     && households.length > 0 && isHouseholdUtility(txn.merchant_raw ?? txn.merchant ?? "");
   const allocation = utilityHint ? "household" : txn?.allocation ?? "personal";
   const pot = utilityHint ? "bills" : txn?.household_pot ?? defaultPot(catName, openProjects.length > 0);
@@ -195,10 +197,7 @@ export function TxnForm({
       <div className="actions">
         {mode === "review" ? (
           <>
-            <div className="opts">
-              <label className="check small"><input type="checkbox" name="remember" defaultChecked /> Remember for this merchant</label>
-              <label className="check small"><input type="checkbox" name="auto_accept" /> Auto-accept next time</label>
-            </div>
+            <div className="opts small faint">Every decision teaches the app</div>
             <div className="go">
               <button className="btn destructive" name="decision" value="reject" formNoValidate>Reject</button>
               <button className="btn primary" name="decision" value="accept">Accept</button>

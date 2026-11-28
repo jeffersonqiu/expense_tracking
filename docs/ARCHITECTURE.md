@@ -109,3 +109,28 @@ numbered in `supabase/migrations/`.
   decisions back to Haiku. A head-to-head accuracy run on labelled emails is
   still to do.
 - v2: personal budgets, recurring bills, income, safe-to-spend.
+
+## 8. Learning loop (AI-first categorisation)
+
+Categorisation is decided by AI for every spend, not by fixed merchant rules,
+because the same merchant can be personal one day and work the next.
+
+1. **Decide** (`src/lib/pipeline/process.ts`, `src/lib/ai/jev.ts`): Jev answers
+   three choice questions per spend (category, allocation, household pot) with
+   confidences. Its `state` carries the spend, keyword/utility hints, the most
+   relevant **knowledge facts**, and up to 8 **similar past decisions** with
+   corrections ranked first (`src/lib/server/knowledge.ts`). The suggestion is
+   stored on the transaction (`transactions.suggestion`).
+2. **Log** (`saveTransaction`): every accept/edit is written to `decision_log`
+   with the suggestion, the final choice, and per-field `corrected_*` flags.
+   Undo deletes the log entry.
+3. **Learn** (`src/lib/server/learn.ts`): weekly (daily cron picks the user whose
+   last run is 7+ days old) or via Settings → Learn now. Claude Sonnet 5.5 reads
+   the last 21 days of decisions (all corrections first) and current facts and
+   returns structured updates: add / refine (support, contradictions) / retire.
+   Facts carry conditions ("weekday lunch, > S$60"), so context decides.
+4. **Inspect**: Settings shows the last run, weekly "kept the AI's suggestion"
+   rates, and every active fact with a Remove button.
+
+Deterministic code still extracts amounts/dates/merchants and matches duplicates.
+Old "Remember for this merchant" rules were converted to modest starting facts.

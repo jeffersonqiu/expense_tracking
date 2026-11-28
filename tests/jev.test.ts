@@ -23,7 +23,7 @@ describe("JevDecider", () => {
     const costs: number[] = [];
     const extractor: Decider = {
       name: "fake", extract: async () => ({ isTransaction: true, confidence: 1, amount: 8.4, currency: "SGD", merchant: "Some Cafe" }),
-      pickCategory: async () => ({ category: null, confidence: 0 }),
+      decide: vi.fn(),
     };
     const jev = new JevDecider("k", (c) => { costs.push(c.costUsd); }, extractor, "typesafe/jev-1.14");
     const x = await jev.extract(unknownReceipt);
@@ -41,19 +41,31 @@ describe("JevDecider", () => {
   it("says no below 0.5 and skips extraction", async () => {
     stubFetch({ is_transaction: { type: "noul", noul: 0.2 }, kind: { type: "refusal" } });
     const extract = vi.fn();
-    const jev = new JevDecider("k", () => {}, { name: "x", extract, pickCategory: vi.fn() } as unknown as Decider);
+    const jev = new JevDecider("k", () => {}, { name: "x", extract, decide: vi.fn() } as unknown as Decider);
     expect(await jev.extract(unknownReceipt)).toMatchObject({ isTransaction: false });
     expect(extract).not.toHaveBeenCalled();
   });
 
-  it("picks a category only from the user's list and handles refusals", async () => {
-    const calls = stubFetch({ category: { type: "choice", choice: "Food", confidence: 0.7, probabilities: {} } });
+  it("decides category, allocation and pot in one request with the user's knowledge", async () => {
+    const calls = stubFetch({
+      category: { type: "choice", choice: "Hotels", confidence: 0.7, probabilities: {} },
+      allocation: { type: "choice", choice: "work", confidence: 0.82, probabilities: {} },
+      pot: { type: "choice", choice: "bills", confidence: 0.4, probabilities: {} },
+    });
     const jev = new JevDecider("k", () => {}, null);
-    expect(await jev.pickCategory({ merchant: "Hua Shuang Kitchen", amount: 6, currency: "SGD", snippet: "" }, ["Food", "Transport"]))
-      .toEqual({ category: "Food", confidence: 0.7 });
-    expect(Object.keys(calls[0]!.body.questions.category.criteria)).toEqual(["Food", "Transport"]);
+    const d = await jev.decide({
+      merchant: "RITZ CARLTON JKT", amount: 588060, currency: "IDR", snippet: "", hasHousehold: true,
+      knowledge: { facts: ["Hotels in Jakarta in Nov 2026 were work trips"], examples: [{ merchant: "RITZ CARLTON BALI", when: "Tue 21:00", amount: "IDR 1", category: "Hotels", allocation: "work", pot: null, correction: "user corrected AI: category Travel -> Hotels" }] },
+    }, ["Travel", "Hotels"]);
+    expect(d).toEqual({ category: "Hotels", categoryConfidence: 0.7, allocation: "work", allocationConfidence: 0.82, pot: "bills", potConfidence: 0.4 });
+    const body = calls[0]!.body;
+    expect(Object.keys(body.questions)).toEqual(["category", "allocation", "pot"]);
+    expect(Object.keys(body.questions.allocation.criteria)).toEqual(["personal", "work", "shared", "household"]);
+    expect(body.state.what_we_know_about_this_user).toEqual(["Hotels in Jakarta in Nov 2026 were work trips"]);
+    expect(body.state.similar_past_decisions[0].correction).toContain("Travel -> Hotels");
 
-    stubFetch({ category: { type: "refusal" } });
-    expect(await jev.pickCategory({ merchant: "x", amount: 1, currency: "SGD", snippet: "" }, ["Food"])).toEqual({ category: null, confidence: 0 });
+    stubFetch({ category: { type: "refusal" }, allocation: { type: "refusal" } });
+    const r = await jev.decide({ merchant: "x", amount: 1, currency: "SGD", snippet: "", hasHousehold: false, knowledge: { facts: [], examples: [] } }, ["Food"]);
+    expect(r).toMatchObject({ category: null, allocation: null, pot: null });
   });
 });

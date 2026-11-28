@@ -3,8 +3,10 @@ import { adminClient } from "@/lib/supabase/admin";
 import { bearer, constantTimeEqual } from "@/lib/server/security";
 import { env } from "@/lib/env";
 import { fxRate, toBase } from "@/lib/server/fx";
+import { learnDue } from "@/lib/server/learn";
 
 export const runtime = "nodejs";
+export const maxDuration = 60;
 
 /**
  * Daily job (Vercel cron): keeps the free Supabase project active and fills in
@@ -26,5 +28,12 @@ export async function GET(req: Request) {
     await db.from("transactions").update({ fx_rate: rate, base_amount: toBase(Number(t.amount), rate) }).eq("id", t.id);
     filled++;
   }
-  return NextResponse.json({ ok: true, fxFilled: filled });
+  // Weekly learning: one due user per day (each user ends up learning about once a week).
+  let learned = "skipped";
+  try {
+    learned = await learnDue(db);
+  } catch (err) {
+    console.error("learnDue", err);
+  }
+  return NextResponse.json({ ok: true, fxFilled: filled, learned });
 }

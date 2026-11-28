@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { getContext } from "@/lib/server/context";
-import { addCategory, inviteEmail, saveProject, setProjectStatus, removeInvite, revokeIngestKey, saveHousehold, setAutoAccept, updateAiSettings } from "../actions";
+import { addCategory, inviteEmail, saveProject, setProjectStatus, learnNow, retireFact, removeInvite, revokeIngestKey, saveHousehold, updateAiSettings } from "../actions";
 import { money, sgtDateTime } from "@/lib/format";
 import { Shell, Header } from "../ui/Shell";
 import { IconChevronRight, IconMail } from "../ui/Icons";
@@ -8,6 +8,7 @@ import { Flash } from "../Flash";
 import { CreateKey } from "./CreateKey";
 
 export const metadata = { title: "Settings · Expenses" };
+export const maxDuration = 60;
 
 const LATEST_SCRIPT = "1.1.0";
 
@@ -28,20 +29,33 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
   const hh = households.find((h) => h.owner_id === uid) ?? null;
   const memberOf = households.filter((h) => h.owner_id !== uid);
 
-  const [keys, hb, settings, usage, invites, rules, members] = await Promise.all([
+  const [keys, hb, settings, usage, invites, facts, members, runs, log] = await Promise.all([
     db.from("ingest_keys").select("id, label, key_prefix, created_at, last_used_at, revoked_at").eq("user_id", uid).order("created_at"),
     db.from("script_heartbeats").select("*").eq("user_id", uid).maybeSingle(),
     db.from("app_settings").select("ai_enabled, ai_monthly_cap_usd").single(),
     db.from("ai_usage").select("model, cost_usd").gte("created_at", monthStart),
     isOwner ? db.from("allowed_emails").select("email, household_id").order("created_at") : Promise.resolve({ data: [] as { email: string; household_id: string | null }[] }),
-    db.from("merchant_rules").select("merchant_key, auto_accept, category_id, allocation").eq("user_id", uid).order("merchant_key"),
+    db.from("knowledge_facts").select("id, subject_type, subject, statement, conditions, support, contradictions, source, updated_at")
+      .eq("user_id", uid).eq("active", true).order("support", { ascending: false }).limit(60),
     hh ? db.from("household_members").select("user_id").eq("household_id", hh.id) : Promise.resolve({ data: [] as { user_id: string }[] }),
+    db.from("learn_runs").select("started_at, summary, error, facts_added, facts_updated, facts_retired, decisions_seen, corrections_seen, cost_usd")
+      .eq("user_id", uid).order("started_at", { ascending: false }).limit(1),
+    db.from("decision_log").select("decided_at, corrected_category, corrected_allocation")
+      .eq("user_id", uid).in("decision", ["accept", "save"]).gte("decided_at", new Date(Date.now() - 28 * 86400e3).toISOString()).limit(2000),
   ]);
+  // Accuracy: share of decisions where you kept the AI's suggestion, per week (most recent first)
+  const weeks = [0, 1, 2, 3].map((w) => {
+    const to = Date.now() - w * 7 * 86400e3;
+    const from = to - 7 * 86400e3;
+    const rows = (log.data ?? []).filter((r) => { const t = new Date(r.decided_at).getTime(); return t >= from && t < to; });
+    const pct = (k: "corrected_category" | "corrected_allocation") => rows.length ? Math.round((rows.filter((r) => !r[k]).length / rows.length) * 100) : null;
+    return { label: w === 0 ? "This week" : w === 1 ? "Last week" : `${w} weeks ago`, n: rows.length, cat: pct("corrected_category"), alloc: pct("corrected_allocation") };
+  });
+  const lastRun = runs.data?.[0];
   const byModel = new Map<string, number>();
   for (const u of usage.data ?? []) byModel.set(u.model, (byModel.get(u.model) ?? 0) + Number(u.cost_usd));
   const spent = [...byModel.values()].reduce((a, b) => a + b, 0);
   const cap = Number(settings.data?.ai_monthly_cap_usd ?? 1);
-  const catName = new Map(categories.map((c) => [c.id, c.name]));
   const activeKeys = (keys.data ?? []).filter((k) => !k.revoked_at);
   const connected = hb.data && Date.now() - new Date(hb.data.last_seen_at).getTime() < 24 * 3600e3;
 
@@ -195,27 +209,55 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
       </div>
       <div className="section-foot">When the cap is reached, emails still arrive and wait in Review untagged. Your OpenRouter balance is the hard ceiling.</div>
 
-      {/* Rules */}
-      <div className="section-label">Merchant rules</div>
+      {/* Learning */}
+      <div className="section-label">Learning</div>
       <div className="list">
-        {(rules.data ?? []).length === 0 && <div className="row empty">Rules appear as you accept spends with &ldquo;Remember&rdquo; ticked.</div>}
-        {(rules.data ?? []).map((r) => (
-          <div className="row" key={r.merchant_key}>
-            <div className="main">
-              <div className="title" style={{ fontWeight: 400, textTransform: "capitalize" }}>{r.merchant_key}</div>
-              <div className="subtitle">{catName.get(r.category_id) ?? "No category"}{r.allocation && r.allocation !== "personal" ? ` · ${r.allocation}` : ""}</div>
+        <div className="row" style={{ flexWrap: "wrap" }}>
+          <div className="main">
+            <div className="title" style={{ fontWeight: 400 }}>{lastRun ? `Last learned ${sgtDateTime(lastRun.started_at)}` : "Hasn't learned yet"}</div>
+            <div className="subtitle" style={{ whiteSpace: "normal" }}>
+              {lastRun?.error ? <span className="bad">Last run failed: {lastRun.error}</span>
+                : lastRun ? `${lastRun.summary ?? ""} · ${lastRun.decisions_seen} decisions, ${lastRun.corrections_seen} corrections`
+                : "Learns automatically once a week from your decisions, especially the ones you corrected."}
             </div>
-            <form action={setAutoAccept} className="inline">
-              <input type="hidden" name="merchant_key" value={r.merchant_key} />
-              <input type="hidden" name="on" value={r.auto_accept ? "0" : "1"} />
-              <button className={`btn ${r.auto_accept ? "primary" : ""}`} style={{ fontSize: 13, padding: "5px 10px" }} aria-pressed={r.auto_accept}>
-                {r.auto_accept ? "Auto-accept on" : "Auto-accept off"}
-              </button>
+          </div>
+          <form action={learnNow} className="inline"><button className="btn">Learn now</button></form>
+        </div>
+      </div>
+      <div className="section-foot">Runs weekly with Claude Sonnet 5.5 (about $0.05–0.15 per run, within your AI cap).</div>
+
+      <div className="section-label">How often you kept the AI&apos;s suggestion</div>
+      <div className="list">
+        {weeks.map((w) => (
+          <div className="row" key={w.label}>
+            <div className="main"><div className="title" style={{ fontWeight: 400 }}>{w.label}</div><div className="subtitle">{w.n} decisions</div></div>
+            <div className="trail small num">
+              {w.n ? <>Category <strong>{w.cat}%</strong> · Allocation <strong>{w.alloc}%</strong></> : <span className="faint">—</span>}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="section-label">What it has learned</div>
+      <div className="list">
+        {(facts.data ?? []).length === 0 && <div className="row empty">Nothing yet. Review some spends, then tap Learn now.</div>}
+        {(facts.data ?? []).map((f) => (
+          <div className="row" key={f.id}>
+            <div className="main">
+              <div className="title" style={{ fontWeight: 400, whiteSpace: "normal" }}>{f.statement}</div>
+              <div className="subtitle" style={{ whiteSpace: "normal" }}>
+                {f.conditions ? `When ${f.conditions} · ` : ""}seen {f.support}×{f.contradictions ? `, ${f.contradictions} exceptions` : ""}
+                {f.source === "imported" ? " · from your old remembered choices" : ""}
+              </div>
+            </div>
+            <form action={retireFact} className="inline">
+              <input type="hidden" name="id" value={f.id} />
+              <button className="btn plain destructive" aria-label="Remove this fact">Remove</button>
             </form>
           </div>
         ))}
       </div>
-      <div className="section-foot">Auto-accept records future spends from that merchant without asking.</div>
+      <div className="section-foot">Remove anything that&apos;s wrong; the app stops using it immediately.</div>
 
       {/* Categories */}
       <div className="section-label">Categories</div>

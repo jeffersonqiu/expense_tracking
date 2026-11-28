@@ -30,6 +30,10 @@ insert into public.transactions(id, user_id, client_ref, occurred_at, amount, cu
   ('20000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-00000000000a', 'o1', now(), 20, 'SGD', 'spend', 'personal', null),
   ('20000000-0000-0000-0000-000000000003', '00000000-0000-0000-0000-00000000000b', 'w2', now(), 9, 'SGD', 'spend', 'personal', null);
 
+insert into public.knowledge_facts(user_id, subject_type, subject, statement) values
+  ('00000000-0000-0000-0000-00000000000a', 'merchant', 'joyful cck', 'Owner fact');
+insert into public.decision_log(user_id, decision, merchant) values ('00000000-0000-0000-0000-00000000000a', 'accept', 'x');
+
 -- As wife
 set role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000000b', false);
@@ -41,8 +45,15 @@ select count(*) = 0 as ok from public.transactions where id = '20000000-0000-000
 \if :ok \else \echo 'FAIL wife sees owner personal row' \q \endif
 select public.mark_household_reimbursed(array['20000000-0000-0000-0000-000000000001']::uuid[], true) = 0 as ok \gset
 \if :ok \else \echo 'FAIL wife could mark reimbursed' \q \endif
+select (select count(*) from public.knowledge_facts) + (select count(*) from public.decision_log) = 0 as ok \gset
+\if :ok \else \echo 'FAIL wife sees owner knowledge or decisions' \q \endif
+do $$ begin
+  insert into public.knowledge_facts(user_id, subject_type, subject, statement) values ('00000000-0000-0000-0000-00000000000b', 'merchant', 'x', 'self-written');
+  raise exception 'users can write facts directly';
+exception when insufficient_privilege then null;
+end $$;
 update public.app_settings set ai_monthly_cap_usd = 100;
-select ai_monthly_cap_usd = 1.00 as ok from public.app_settings \gset
+select ai_monthly_cap_usd = 2.00 as ok from public.app_settings \gset
 \if :ok \else \echo 'FAIL non-owner changed settings' \q \endif
 do $$ begin
   perform public.seed_categories('00000000-0000-0000-0000-00000000000a');

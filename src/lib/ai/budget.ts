@@ -44,8 +44,8 @@ export class GuardedDecider implements Decider {
     return this.inner.extract(email);
   }
 
-  async pickCategory(input: Parameters<Decider["pickCategory"]>[0], categories: string[]) {
+  async decide(input: Parameters<Decider["decide"]>[0], categories: string[]) {
     this.check();
-    return this.inner.pickCategory(input, categories);
+    return this.inner.decide(input, categories);
   }
 }
