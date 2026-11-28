@@ -50,8 +50,20 @@ do $$ begin
 exception when insufficient_privilege then null;
 end $$;
 
+-- Wife can start a project in her household; existing household spend became 'allowance'
+insert into public.household_projects(household_id, name, budget) values ('10000000-0000-0000-0000-000000000001', 'Renovation', 15000);
+select count(*) = 1 as ok from public.household_projects \gset
+\if :ok \else \echo 'FAIL member cannot create project' \q \endif
+
 -- As owner
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000000a', false);
+select count(*) = 1 as ok from public.household_projects \gset
+\if :ok \else \echo 'FAIL owner cannot see project' \q \endif
+do $$ begin
+  update public.transactions set household_pot = 'bills' where id = '20000000-0000-0000-0000-000000000002';
+  raise exception 'pot allowed on a personal spend';
+exception when check_violation then null;
+end $$;
 select count(*) = 2 as ok from public.transactions \gset
 \if :ok \else \echo 'FAIL owner should see own + household row' \q \endif
 select count(*) = 0 as ok from public.transactions where id = '20000000-0000-0000-0000-000000000003' \gset

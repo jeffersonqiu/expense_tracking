@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { getContext } from "@/lib/server/context";
-import { addCategory, inviteEmail, removeInvite, revokeIngestKey, saveHousehold, setAutoAccept, updateAiSettings } from "../actions";
+import { addCategory, inviteEmail, saveProject, setProjectStatus, removeInvite, revokeIngestKey, saveHousehold, setAutoAccept, updateAiSettings } from "../actions";
 import { money, sgtDateTime } from "@/lib/format";
 import { Shell, Header } from "../ui/Shell";
 import { IconChevronRight, IconMail } from "../ui/Icons";
@@ -21,7 +21,7 @@ function ago(iso: string) {
 
 export default async function SettingsPage({ searchParams }: { searchParams: Promise<{ error?: string; ok?: string }> }) {
   const flash = await searchParams;
-  const { db, uid, profile, categories, households, pendingCount } = await getContext();
+  const { db, uid, profile, categories, households, projects, pendingCount } = await getContext();
   const isOwner = !!profile?.is_owner;
   const now = new Date();
   const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
@@ -104,6 +104,36 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
       </div>
       {hh && <div className="section-foot">To add your spouse, invite them below with &ldquo;Add to {hh.name}&rdquo; ticked. They join when they first sign in.</div>}
 
+      {households.length > 0 && (
+        <>
+          <div className="section-label">Household projects</div>
+          <div className="list">
+            {projects.map((pr) => (
+              <div className="row" key={pr.id} style={{ flexWrap: "wrap" }}>
+                <form action={saveProject} style={{ display: "flex", gap: 8, flex: "1 1 260px", flexWrap: "wrap" }}>
+                  <input type="hidden" name="id" value={pr.id} />
+                  <input type="hidden" name="household_id" value={pr.household_id} />
+                  <input name="name" defaultValue={pr.name} aria-label="Project name" style={{ flex: "2 1 140px" }} />
+                  <input name="budget" type="number" inputMode="decimal" min="0" defaultValue={pr.budget ?? ""} placeholder="Budget" aria-label="Project budget" style={{ flex: "1 1 90px" }} />
+                  <button className="btn">Save</button>
+                </form>
+                <form action={setProjectStatus} className="inline">
+                  <input type="hidden" name="id" value={pr.id} />
+                  <input type="hidden" name="status" value={pr.status === "open" ? "closed" : "open"} />
+                  <button className="btn plain">{pr.status === "open" ? "Close" : "Reopen"}</button>
+                </form>
+              </div>
+            ))}
+            <form action={saveProject} className="row" style={{ flexWrap: "wrap" }}>
+              <input type="hidden" name="household_id" value={households[0]!.id} />
+              <input name="name" placeholder="New project, e.g. Renovation 2026" required maxLength={80} aria-label="New project name" style={{ flex: "2 1 160px" }} />
+              <input name="budget" type="number" inputMode="decimal" min="0" placeholder="Budget (optional)" aria-label="Budget" style={{ flex: "1 1 120px" }} />
+              <button className="btn primary">Add</button>
+            </form>
+          </div>
+          <div className="section-foot">Projects track one-off home spending (renovation, furniture) outside the monthly allowance. They don&apos;t reset monthly.</div>
+        </>
+      )}
       {/* People */}
       {isOwner && (
         <>

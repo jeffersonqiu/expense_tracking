@@ -1,6 +1,6 @@
 import { saveTransaction } from "./actions";
 import { money, sgtDateTime, toLocalInput } from "@/lib/format";
-import type { Category, Household } from "@/lib/server/context";
+import { defaultPot, type Category, type Household, type Project } from "@/lib/server/context";
 
 export interface TxnRow {
   id: string;
@@ -16,6 +16,8 @@ export interface TxnRow {
   allocation: string;
   claim_status: string | null;
   household_id: string | null;
+  household_pot?: string | null;
+  project_id?: string | null;
   description: string | null;
   payment_method: string | null;
   needs_manual_amount: boolean;
@@ -58,11 +60,12 @@ function suggestionSource(classifier: string | null, confidence: number | null):
 
 /** One captured spend: review card, edit form, or manual entry. */
 export function TxnForm({
-  txn, categories, households, returnTo, mode,
+  txn, categories, households, projects = [], returnTo, mode,
 }: {
   txn: TxnRow | null;
   categories: Category[];
   households: Household[];
+  projects?: Project[];
   returnTo: string;
   mode: "review" | "edit" | "new";
 }) {
@@ -71,6 +74,9 @@ export function TxnForm({
   const amountSigned = txn ? (txn.kind === "refund" ? -Number(txn.amount) : Number(txn.amount)) : 0;
   const showConv = txn && txn.base_currency && txn.currency !== txn.base_currency;
   const confidence = txn?.confidence != null ? Math.round(Number(txn.confidence) * 100) : null;
+  const openProjects = projects.filter((p) => p.status === "open");
+  const catName = categories.find((c) => c.id === txn?.category_id)?.name;
+  const pot = txn?.household_pot ?? defaultPot(catName, openProjects.length > 0);
 
   return (
     <form action={saveTransaction} className="review">
@@ -109,12 +115,28 @@ export function TxnForm({
         ]} />
       </div>
       <div className="block when-household">
-        <label className="field"><span>Household</span>
-          <select name="household_id" defaultValue={txn?.household_id ?? households[0]?.id ?? ""}>
-            {households.length === 0 && <option value="">Create a household in Settings first</option>}
-            {households.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
-          </select>
-        </label>
+        {households.length > 1 && (
+          <label className="field" style={{ marginBottom: 12 }}><span>Household</span>
+            <select name="household_id" defaultValue={txn?.household_id ?? households[0]?.id ?? ""}>
+              {households.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
+            </select>
+          </label>
+        )}
+        {households.length === 1 && <input type="hidden" name="household_id" value={households[0]!.id} />}
+        {households.length === 0 && <div className="small bad">Create a household in Settings first.</div>}
+        <div className="lbl">Household pot</div>
+        <Segmented name="household_pot" value={pot} options={[
+          { value: "allowance", label: "Allowance" }, { value: "bills", label: "Bills" }, { value: "project", label: "Project" },
+        ]} />
+        <div className="when-project" style={{ marginTop: 12 }}>
+          <label className="field"><span>Project</span>
+            <select name="project_id" defaultValue={txn?.project_id ?? openProjects[0]?.id ?? "__new"}>
+              {openProjects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              <option value="__new">+ New project…</option>
+            </select>
+          </label>
+          <input name="new_project_name" placeholder="New project name, e.g. Renovation 2026" maxLength={80} className="when-newproject" style={{ marginTop: 8 }} aria-label="New project name" />
+        </div>
       </div>
       <div className="block when-shared">
         <label className="field"><span>Who owes you (one per line, e.g. &ldquo;Alex: 12.50&rdquo;)</span>

@@ -1,11 +1,11 @@
 import Link from "next/link";
-import { getContext, monthRange } from "@/lib/server/context";
-import { householdMonth } from "@/lib/server/summary";
+import { getContext, monthRange, shiftMonth } from "@/lib/server/context";
+import { billsMonth, householdMonth, projectTotals } from "@/lib/server/summary";
 import { markReimbursed } from "../actions";
 import { money, sgtDate } from "@/lib/format";
 import { Shell, Header } from "../ui/Shell";
 import { MonthStepper } from "../ui/MonthStepper";
-import { IconChevronRight, IconHouse } from "../ui/Icons";
+import { IconAlert, IconChevronRight, IconHouse } from "../ui/Icons";
 import { Flash } from "../Flash";
 
 export const metadata = { title: "Household · Expenses" };
@@ -25,7 +25,7 @@ function Ring({ value, max }: { value: number; max: number }) {
 
 export default async function HouseholdPage({ searchParams }: { searchParams: Promise<{ m?: string; error?: string; ok?: string }> }) {
   const sp = await searchParams;
-  const { db, uid, households, pendingCount } = await getContext();
+  const { db, uid, households, projects, pendingCount } = await getContext();
   const hh = households[0];
   if (!hh) {
     return (
@@ -40,12 +40,18 @@ export default async function HouseholdPage({ searchParams }: { searchParams: Pr
     );
   }
   const { ym, start, end } = monthRange(sp.m);
-  const month = await householdMonth(db, hh.id, start, end);
+  const [month, bills, projTotals] = await Promise.all([
+    householdMonth(db, hh.id, start, end),
+    billsMonth(db, hh.id, start, end, monthRange(shiftMonth(ym, -3)).start),
+    projectTotals(db, hh.id),
+  ]);
+  const openProjects = projects.filter((p) => p.household_id === hh.id && p.status === "open");
+  const billDelta = bills.total - bills.lastMonthTotal;
   const [{ data: list }, { data: owed }, { data: members }] = await Promise.all([
-    db.from("transactions").select("id, user_id, occurred_at, merchant, amount, currency, kind, reimbursed_at")
+    db.from("transactions").select("id, user_id, occurred_at, merchant, amount, currency, kind, reimbursed_at, household_pot")
       .eq("household_id", hh.id).eq("allocation", "household").eq("status", "confirmed")
       .gte("occurred_at", start).lt("occurred_at", end).order("occurred_at", { ascending: false }),
-    db.from("transactions").select("id, user_id, occurred_at, merchant, base_amount, kind")
+    db.from("transactions").select("id, user_id, occurred_at, merchant, base_amount, kind, household_pot")
       .eq("household_id", hh.id).eq("allocation", "household").eq("status", "confirmed")
       .is("reimbursed_at", null).neq("user_id", hh.owner_id).order("occurred_at"),
     db.from("profiles").select("id, display_name"),
@@ -63,11 +69,53 @@ export default async function HouseholdPage({ searchParams }: { searchParams: Pr
       <section className="hero ring-wrap" aria-label="Budget">
         <Ring value={month.spent} max={hh.monthly_budget} />
         <div>
-          <div className="h-label">{left >= 0 ? "Left this month" : "Over budget"}</div>
+          <div className="h-label">Allowance · {left >= 0 ? "left this month" : "over budget"}</div>
           <div className={`h-value ${left < 0 ? "bad" : ""}`}>{money(Math.abs(left), hh.currency)}</div>
           <div className="h-foot">{money(month.spent, hh.currency)} spent of {money(hh.monthly_budget, hh.currency)}</div>
         </div>
       </section>
+
+      <h2 className="section-title" style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+        <span>Bills &amp; utilities</span>
+        <span className="num" style={{ fontWeight: 600 }}>{money(bills.total, hh.currency)}</span>
+      </h2>
+      <div className="list">
+        {bills.lines.length === 0 && <div className="row empty">No bills this month yet.</div>}
+        {bills.lines.map((l) => (
+          <div className="row" key={l.merchant + l.ids[0]}>
+            <div className="main">
+              <div className="title">{l.merchant}</div>
+              {l.usual != null && <div className="subtitle">Usually {money(l.usual, hh.currency)}</div>}
+            </div>
+            {l.unusual && <span className="pill warn"><IconAlert className="" />Higher than usual</span>}
+            <div className="trail num">{money(l.amount, hh.currency)}</div>
+          </div>
+        ))}
+      </div>
+      {bills.lastMonthTotal > 0 && (
+        <div className="section-foot">
+          {Math.abs(billDelta) < 0.005 ? "Same as last month." : `${money(Math.abs(billDelta), hh.currency)} ${billDelta > 0 ? "more" : "less"} than last month.`}
+        </div>
+      )}
+
+      <h2 className="section-title">Projects</h2>
+      <div className="list">
+        {openProjects.length === 0 && <div className="row empty">No open projects. Start one from a review card (Household → Project) or in Settings.</div>}
+        {openProjects.map((pr) => {
+          const spent = projTotals.get(pr.id) ?? 0;
+          const over = pr.budget != null && spent > pr.budget;
+          return (
+            <div className="row bars" key={pr.id} style={{ flexWrap: "wrap" }}>
+              <div className="main">
+                <div className="title">{pr.name}</div>
+                <div className="subtitle">{pr.budget != null ? (over ? <span className="bad">over budget by {money(spent - pr.budget, hh.currency)}</span> : `${money(pr.budget - spent, hh.currency)} left of ${money(pr.budget, hh.currency)}`) : "No budget set"}</div>
+              </div>
+              <div className="trail num" style={{ fontWeight: 600 }}>{money(spent, hh.currency)}</div>
+              {pr.budget != null && <div className="bar-track"><div className="bar-fill" style={{ width: `${Math.min(100, (spent / Math.max(1, pr.budget)) * 100)}%`, background: over ? "var(--bad)" : undefined }} /></div>}
+            </div>
+          );
+        })}
+      </div>
 
       <h2 className="section-title">{isOwner ? "To reimburse" : "Owed to you"}{owedTotal > 0 && <span className="muted" style={{ fontWeight: 500 }}> · {money(owedTotal, hh.currency)}</span>}</h2>
       <form action={markReimbursed}>
@@ -78,7 +126,7 @@ export default async function HouseholdPage({ searchParams }: { searchParams: Pr
               {isOwner && <input type="checkbox" name="id" value={r.id} style={{ width: 20, height: 20, accentColor: "var(--tint)" }} />}
               <div className="main">
                 <div className="title">{r.merchant ?? "—"}</div>
-                <div className="subtitle">Paid by {name(r.user_id)} · {sgtDate(r.occurred_at)}</div>
+                <div className="subtitle">Paid by {name(r.user_id)} · {sgtDate(r.occurred_at)}{r.household_pot && r.household_pot !== "allowance" ? ` · ${r.household_pot === "bills" ? "Bill" : "Project"}` : ""}</div>
               </div>
               <div className="trail num">{money((r.kind === "refund" ? -1 : 1) * Number(r.base_amount ?? 0), hh.currency)}</div>
             </label>
@@ -91,7 +139,7 @@ export default async function HouseholdPage({ searchParams }: { searchParams: Pr
         )}
       </form>
 
-      <h2 className="section-title">This month</h2>
+      <h2 className="section-title">All household spending this month</h2>
       <div className="list">
         {(list ?? []).length === 0 && <div className="row empty">No household spending this month.</div>}
         {(list ?? []).map((r) => {
@@ -102,6 +150,7 @@ export default async function HouseholdPage({ searchParams }: { searchParams: Pr
                 <div className="title">{r.merchant ?? "—"}</div>
                 <div className="subtitle">
                   {name(r.user_id)} · {sgtDate(r.occurred_at)}
+                  {r.household_pot && r.household_pot !== "allowance" ? ` · ${r.household_pot === "bills" ? "Bill" : "Project"}` : ""}
                   {r.user_id !== hh.owner_id && (r.reimbursed_at ? " · reimbursed" : " · owed")}
                 </div>
               </div>

@@ -25,7 +25,7 @@ function dayLabel(key: string) {
 
 export default async function ActivityPage({ searchParams }: { searchParams: Promise<{ m?: string; status?: string; error?: string; ok?: string }> }) {
   const sp = await searchParams;
-  const { db, uid, categories, households, pendingCount } = await getContext();
+  const { db, uid, categories, households, projects, pendingCount } = await getContext();
   const { ym, start, end } = monthRange(sp.m);
   const status = sp.status === "rejected" ? "rejected" : "confirmed";
   const { data } = await db.from("transactions")
@@ -95,7 +95,7 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
 
       <details className="addmore">
         <summary className="btn" style={{ width: "100%" }}><IconPlus />Add expense with details</summary>
-        <TxnForm txn={null} categories={categories} households={households} returnTo="/transactions" mode="new" />
+        <TxnForm txn={null} categories={categories} households={households} projects={projects} returnTo="/transactions" mode="new" />
       </details>
     </Shell>
   );

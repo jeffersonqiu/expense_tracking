@@ -376,3 +376,9 @@ form:has(input[name="allocation"][value="household"]:checked) .when-household { 
 .swipe-hint.reject { left: 0; right: 0; justify-content: flex-end; background: var(--bad-soft); color: var(--bad); }
 .swipe-tip { margin: 0 4px 12px; }
 @media (hover: hover) and (pointer: fine) { .swipe-tip { display: none; } }
+
+/* Household pot: project picker only for "Project"; name field only for a new project */
+.when-project, .when-newproject { display: none !important; }
+form:has(input[name="household_pot"][value="project"]:checked) .when-project { display: block !important; }
+form:has(select[name="project_id"] option[value="__new"]:checked) .when-newproject { display: block !important; }
+.pill svg { width: 12px; height: 12px; }

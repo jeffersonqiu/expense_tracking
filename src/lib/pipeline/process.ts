@@ -10,6 +10,8 @@ export interface MerchantMemory {
   kind: ParsedTxn["kind"] | null;
   allocation: string | null;
   autoAccept?: boolean;
+  householdPot?: string | null;
+  projectId?: string | null;
 }
 
 export interface ProcessContext {
@@ -29,6 +31,8 @@ export interface Draft extends ParsedTxn {
   classifier: string;
   needsManualAmount: boolean;
   autoAccept: boolean;
+  householdPot: string | null;
+  projectId: string | null;
 }
 
 export interface ProcessOutcome {
@@ -130,6 +134,8 @@ export async function processEmail(email: IncomingEmail, ctx: ProcessContext): P
       classifier: catClassifier,
       needsManualAmount,
       autoAccept: !!mem?.autoAccept && !needsManualAmount && !!categoryName,
+      householdPot: mem?.householdPot ?? null,
+      projectId: mem?.projectId ?? null,
     });
   }
 

@@ -54,6 +54,9 @@ const TxnForm = z.object({
   allocation: z.enum(ALLOCATIONS),
   claim_status: z.enum(CLAIM).optional().or(z.literal("")),
   household_id: optId,
+  household_pot: z.enum(["allowance", "bills", "project"]).optional().or(z.literal("")),
+  project_id: z.string().regex(ID).optional().or(z.literal("")).or(z.literal("__new")),
+  new_project_name: z.string().trim().max(80).optional(),
   description: z.string().transform((v) => v.slice(0, 500)).optional(),
   shares: z.string().max(2000).optional(),
   remember: z.string().optional(),
@@ -64,6 +67,7 @@ const TxnForm = z.object({
 const FIELD_LABELS: Record<string, string> = {
   amount: "Amount", currency: "Currency (3 letters, e.g. SGD)", kind: "Type", merchant: "Merchant",
   category_id: "Category", allocation: "Allocation", claim_status: "Claim status", household_id: "Household",
+  household_pot: "Household pot", project_id: "Project", new_project_name: "Project name",
   occurred_at: "Date", shares: "Who owes you", id: "Transaction", decision: "Action",
 };
 
@@ -87,6 +91,23 @@ export async function saveTransaction(fd: FormData) {
 
   if (allocation === "household" && !f.household_id) back(returnTo, "Choose a household (create one in Settings first).");
 
+  // Household pot and project (a new project can be started right from the card)
+  const pot = allocation === "household" ? f.household_pot || "allowance" : null;
+  let projectId: string | null = null;
+  if (pot === "project") {
+    if (f.project_id && f.project_id !== "__new") projectId = f.project_id;
+    else {
+      if (!f.new_project_name) back(returnTo, "Name the new project (or pick an existing one).");
+      const np = await db.from("household_projects")
+        .insert({ household_id: f.household_id, name: f.new_project_name, created_by: uid }).select("id").single();
+      if (np.error) {
+        console.error("create project", np.error);
+        back(returnTo, "Couldn't create that project.");
+      }
+      projectId = np.data.id;
+    }
+  }
+
   const fields = {
     occurred_at: occurred,
     amount: f.amount,
@@ -101,6 +122,8 @@ export async function saveTransaction(fd: FormData) {
     allocation,
     claim_status: allocation === "work" ? f.claim_status || "to_claim" : null,
     household_id: allocation === "household" ? f.household_id || null : null,
+    household_pot: pot,
+    project_id: projectId,
     description: f.description || null,
     needs_manual_amount: false,
     status: f.decision === "reject" ? "rejected" : f.decision === "accept" ? "confirmed" : undefined,
@@ -146,6 +169,8 @@ export async function saveTransaction(fd: FormData) {
       category_id: f.category_id || null,
       kind: f.kind,
       allocation: allocation === "shared" ? "personal" : allocation,
+      household_pot: pot,
+      project_id: projectId,
       auto_accept: !!f.auto_accept,
       updated_at: new Date().toISOString(),
     });
@@ -419,4 +444,34 @@ export async function undoReview(fd: FormData) {
   if (error || !data) back("/review", "Couldn't undo that one.");
   revalidatePath("/", "layout");
   back("/review", `${data.merchant ?? "Spend"} is back in Review.`, "ok");
+}
+
+/** Create or update a household project (name + optional budget). */
+export async function saveProject(fd: FormData) {
+  const { db, uid, households } = await getContext();
+  const hid = str(fd, "household_id");
+  if (!households.some((h) => h.id === hid)) back("/settings", "Choose a household first.");
+  const name = str(fd, "name").slice(0, 80);
+  if (!name) back("/settings", "Give the project a name.");
+  const budgetRaw = str(fd, "budget");
+  const budget = budgetRaw ? Number(budgetRaw.replace(/,/g, "")) : null;
+  if (budget != null && (!Number.isFinite(budget) || budget < 0)) back("/settings", "Budget must be a positive number.");
+  const id = str(fd, "id");
+  const { error } = id
+    ? await db.from("household_projects").update({ name, budget }).eq("id", id).eq("household_id", hid)
+    : await db.from("household_projects").insert({ household_id: hid, name, budget, created_by: uid });
+  if (error) {
+    console.error("saveProject", error);
+    back("/settings", "Couldn't save the project.");
+  }
+  revalidatePath("/", "layout");
+  back("/settings", `Project "${name}" saved.`, "ok");
+}
+
+export async function setProjectStatus(fd: FormData) {
+  const { db } = await getContext();
+  const status = str(fd, "status") === "closed" ? "closed" : "open";
+  await db.from("household_projects").update({ status }).eq("id", str(fd, "id"));
+  revalidatePath("/", "layout");
+  back("/settings", status === "closed" ? "Project closed." : "Project reopened.", "ok");
 }

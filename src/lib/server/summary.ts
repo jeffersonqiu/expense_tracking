@@ -47,7 +47,60 @@ export async function householdMonth(db: SupabaseClient, householdId: string, st
   const { data } = await db.from("transactions")
     .select("id, user_id, amount, fx_rate, base_amount, kind, allocation, category_id, household_id, reimbursed_at")
     .eq("household_id", householdId).eq("status", "confirmed").eq("allocation", "household")
+    .or("household_pot.is.null,household_pot.eq.allowance")
     .gte("occurred_at", start).lt("occurred_at", end);
   const rows = (data ?? []) as SummaryRow[];
   return { spent: rows.reduce((s, r) => s + spendValue(r.kind, r.base_amount == null ? null : Number(r.base_amount)), 0), rows };
+}
+
+export interface BillLine { merchant: string; amount: number; usual: number | null; unusual: boolean; ids: string[] }
+
+/**
+ * Bills pot for a month, grouped by merchant, with each merchant's usual amount
+ * (average of the previous 3 months) so unusually high bills can be flagged.
+ */
+export async function billsMonth(db: SupabaseClient, householdId: string, start: string, end: string, historyStart: string) {
+  const { data } = await db.from("transactions")
+    .select("id, merchant, merchant_key, base_amount, kind, occurred_at")
+    .eq("household_id", householdId).eq("status", "confirmed").eq("allocation", "household").eq("household_pot", "bills")
+    .gte("occurred_at", historyStart).lt("occurred_at", end);
+  const rows = data ?? [];
+  const thisMonth = rows.filter((r) => r.occurred_at >= start);
+  const before = rows.filter((r) => r.occurred_at < start);
+  const val = (r: { kind: string; base_amount: number | string | null }) => spendValue(r.kind, r.base_amount == null ? null : Number(r.base_amount));
+
+  const lines = new Map<string, BillLine>();
+  for (const r of thisMonth) {
+    const key = r.merchant_key ?? r.merchant ?? "?";
+    const l = lines.get(key) ?? { merchant: r.merchant ?? "—", amount: 0, usual: null, unusual: false, ids: [] as string[] };
+    l.amount += val(r);
+    l.ids.push(r.id);
+    lines.set(key, l);
+  }
+  for (const [key, l] of lines) {
+    const past = before.filter((r) => (r.merchant_key ?? r.merchant ?? "?") === key);
+    if (past.length) {
+      const months = new Set(past.map((r) => r.occurred_at.slice(0, 7))).size;
+      l.usual = past.reduce((s2, r) => s2 + val(r), 0) / Math.max(1, months);
+      l.unusual = l.usual > 0 && l.amount > l.usual * 1.3 && l.amount - l.usual > 10;
+    }
+  }
+  const prevMonthStart = new Date(new Date(start).getTime() - 1).toISOString().slice(0, 7);
+  const lastMonthTotal = before.filter((r) => toSgtMonth(r.occurred_at) === prevMonthStart).reduce((s2, r) => s2 + val(r), 0);
+  const total = [...lines.values()].reduce((s2, l) => s2 + l.amount, 0);
+  return { total, lastMonthTotal, lines: [...lines.values()].sort((a, b) => b.amount - a.amount) };
+}
+
+function toSgtMonth(iso: string): string {
+  return new Date(new Date(iso).getTime() + 8 * 3600e3).toISOString().slice(0, 7);
+}
+
+/** All-time spend per project (projects don't reset monthly). */
+export async function projectTotals(db: SupabaseClient, householdId: string) {
+  const { data } = await db.from("transactions")
+    .select("project_id, base_amount, kind")
+    .eq("household_id", householdId).eq("status", "confirmed").eq("household_pot", "project").not("project_id", "is", null);
+  const totals = new Map<string, number>();
+  for (const r of data ?? []) totals.set(r.project_id as string, (totals.get(r.project_id as string) ?? 0) + spendValue(r.kind, r.base_amount == null ? null : Number(r.base_amount)));
+  return totals;
 }

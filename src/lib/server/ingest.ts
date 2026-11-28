@@ -68,13 +68,15 @@ export async function ingestEmail(db: SupabaseClient, userId: string, email: Inc
     categories: categories.map((c) => c.name as string),
     ai,
     memory: async (key: string) => {
-      const r = await db.from("merchant_rules").select("category_id, kind, allocation, auto_accept").eq("user_id", userId).eq("merchant_key", key).maybeSingle();
+      const r = await db.from("merchant_rules").select("category_id, kind, allocation, auto_accept, household_pot, project_id").eq("user_id", userId).eq("merchant_key", key).maybeSingle();
       if (!r.data) return null;
       return {
         categoryName: r.data.category_id ? catById.get(r.data.category_id) ?? null : null,
         kind: r.data.kind,
         allocation: r.data.allocation,
         autoAccept: !!r.data.auto_accept,
+        householdPot: r.data.household_pot as string | null,
+        projectId: r.data.project_id as string | null,
       };
     },
   };
@@ -152,6 +154,8 @@ export async function ingestEmail(db: SupabaseClient, userId: string, email: Inc
       allocation,
       claim_status: allocation === "work" ? "to_claim" : null,
       household_id: allocation === "household" ? householdId : null,
+      household_pot: allocation === "household" ? (d.householdPot === "project" && !d.projectId ? "allowance" : d.householdPot ?? "allowance") : null,
+      project_id: allocation === "household" && d.householdPot === "project" ? d.projectId ?? null : null,
       confidence: d.confidence,
       classifier: d.classifier,
       needs_manual_amount: d.needsManualAmount,

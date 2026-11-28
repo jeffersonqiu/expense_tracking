@@ -4,6 +4,7 @@ import { userClient } from "../supabase/server";
 
 export interface Category { id: string; name: string }
 export interface Household { id: string; name: string; owner_id: string; monthly_budget: number; currency: string }
+export interface Project { id: string; household_id: string; name: string; budget: number | null; status: string }
 
 /** Everything most pages need about the signed-in user. Redirects to /login when signed out. */
 export async function getContext() {
@@ -12,11 +13,12 @@ export async function getContext() {
   if (!auth.user) redirect("/login");
   const uid = auth.user.id;
 
-  const [profile, categories, households, pending] = await Promise.all([
+  const [profile, categories, households, pending, projects] = await Promise.all([
     db.from("profiles").select("id, email, display_name, base_currency, is_owner").eq("id", uid).single(),
     db.from("categories").select("id, name").eq("user_id", uid).order("sort_order"),
     db.from("households").select("id, name, owner_id, monthly_budget, currency"),
     db.from("transactions").select("id", { count: "exact", head: true }).eq("user_id", uid).eq("status", "pending").is("duplicate_of", null),
+    db.from("household_projects").select("id, household_id, name, budget, status").order("created_at"),
   ]);
 
   return {
@@ -26,6 +28,7 @@ export async function getContext() {
     categories: (categories.data ?? []) as Category[],
     households: ((households.data ?? []) as Household[]).map((h) => ({ ...h, monthly_budget: Number(h.monthly_budget) })),
     pendingCount: pending.count ?? 0,
+    projects: ((projects.data ?? []) as Project[]).map((p) => ({ ...p, budget: p.budget == null ? null : Number(p.budget) })),
   };
 }
 
@@ -42,4 +45,11 @@ export function shiftMonth(ym: string, delta: number): string {
   const [y, m] = ym.split("-").map(Number) as [number, number];
   const d = new Date(Date.UTC(y, m - 1 + delta, 1));
   return d.toISOString().slice(0, 7);
+}
+
+/** Which household pot a category usually belongs to. */
+export function defaultPot(categoryName: string | null | undefined, hasOpenProject: boolean): "allowance" | "bills" | "project" {
+  if (categoryName === "Bills" || categoryName === "Subscription") return "bills";
+  if (categoryName === "House" && hasOpenProject) return "project";
+  return "allowance";
 }
